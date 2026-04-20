@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { HiOutlinePaintBrush, HiOutlineSwatch, HiOutlineSparkles, HiOutlineSquares2X2 } from "react-icons/hi2";
 
 type ThemeOption = {
   id: string;
@@ -52,7 +53,12 @@ const fontOptions: FontOption[] = [
   { id: "editorial", label: "Syne Editorial", className: "font-display italic" },
 ];
 
-const menuItems = ["Themes", "Palettes", "Typography", "Interface"];
+const menuItems = [
+  { label: "Themes", icon: HiOutlineSparkles },
+  { label: "Palettes", icon: HiOutlineSwatch },
+  { label: "Typography", icon: HiOutlinePaintBrush },
+  { label: "Interface", icon: HiOutlineSquares2X2 },
+];
 
 export default function OnboardingStepTwoPage() {
   const [activeMenu, setActiveMenu] = useState("Interface");
@@ -74,24 +80,28 @@ export default function OnboardingStepTwoPage() {
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(8,11,20,0.9),rgba(4,6,11,0.95))]" />
       <div className="relative z-10 grid min-h-screen w-full grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_460px]">
         <aside className="border-r border-white/8 bg-gradient-to-b from-[#131726]/90 to-[#0d1019]/90 px-6 py-8 backdrop-blur-xl">
-          <p className="text-lg font-semibold text-[#c495ff]">ANSH Studio</p>
+          <p className="text-lg font-semibold text-[#c495ff]">ANSH Links</p>
           <p className="mt-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/30">Identity Customizer</p>
 
           <nav className="mt-8 space-y-2">
             {menuItems.map((item) => {
-              const active = item === activeMenu;
+              const active = item.label === activeMenu;
+              const Icon = item.icon;
               return (
                 <button
-                  key={item}
+                  key={item.label}
                   type="button"
-                  onClick={() => setActiveMenu(item)}
+                  onClick={() => setActiveMenu(item.label)}
                   className={`flex w-full items-center justify-between rounded-full px-4 py-2.5 text-left text-sm font-semibold transition ${
                     active
                       ? "border border-cyan-300/35 bg-gradient-to-r from-[#2f3150]/90 to-[#143441]/90 text-white"
                       : "text-white/38 hover:bg-white/5 hover:text-white/70"
                   }`}
                 >
-                  {item}
+                  <span className="flex items-center gap-2.5">
+                    <Icon className={`h-4 w-4 ${active ? "text-cyan-200" : "text-white/45"}`} />
+                    {item.label}
+                  </span>
                 </button>
               );
             })}

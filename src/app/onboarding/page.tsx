@@ -80,19 +80,6 @@ export default function OnboardingPage() {
             </button>
           </div>
 
-          <div className="mt-9">
-            <label className="block">
-              <span className="text-[0.72rem] font-bold uppercase tracking-[0.2em] text-[#11dafd]">Claim your handle</span>
-              <input
-                className="mt-3 w-full rounded-md border border-white/[0.08] bg-[#090c14]/96 px-5 py-3.5 text-[2rem] tracking-[-0.03em] text-white/30 outline-none transition placeholder:text-white/22 focus:border-[#22deff]/48 focus:text-white/92 sm:text-[2.2rem]"
-                placeholder="ansh.cards/yourname"
-              />
-            </label>
-            <p className="mt-2 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-white/32">
-              Availability: <span className="text-[#11dafd]">Searching...</span>
-            </p>
-          </div>
-
           <ContinueToHomeButton />
 
           <p className="mt-5 text-center text-[0.9rem] text-white/44">

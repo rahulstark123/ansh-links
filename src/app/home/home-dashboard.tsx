@@ -1,20 +1,30 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import currencyCodes from "currency-codes";
 import type { IconType } from "react-icons";
 import {
   FaBehance,
+  FaBoxOpen,
   FaCheck,
   FaChevronDown,
+  FaCompass,
   FaDribbble,
   FaFacebookF,
+  FaGear,
   FaGithub,
   FaGlobe,
+  FaHouse,
   FaInstagram,
+  FaLink,
   FaLocationDot,
   FaLinkedinIn,
+  FaPalette,
   FaPlus,
+  FaShareNodes,
   FaTiktok,
+  FaUser,
+  FaXmark,
   FaXTwitter,
   FaYoutube,
   FaGraduationCap,
@@ -58,6 +68,17 @@ type ProductCategory = {
   name: string;
   enabled: boolean;
   products: ProductItem[];
+};
+
+type CatalogProduct = {
+  id: string;
+  name: string;
+  description: string | null;
+  currency: string;
+  amount: number;
+  imageUrl: string | null;
+  useInLinks: boolean;
+  createdAt: string;
 };
 
 type SuggestionItem = {
@@ -129,9 +150,21 @@ type PreviewPayload = {
   design: DesignPreset;
 };
 
-const primaryNavItems = ["Dashboard", "My Links", "Add My Products", "Explore"];
-const utilityNavItems = ["Settings"];
-const builderNavItems = ["Links", "About You", "Products", "Social Media", "Design", "Settings"];
+const primaryNavItems: { label: string; Icon: IconType }[] = [
+  { label: "Dashboard", Icon: FaHouse },
+  { label: "My Links", Icon: FaLink },
+  { label: "My Products", Icon: FaBoxOpen },
+  { label: "Explore", Icon: FaCompass },
+];
+const utilityNavItems: { label: string; Icon: IconType }[] = [{ label: "Settings", Icon: FaGear }];
+const builderNavItems: { label: string; Icon: IconType }[] = [
+  { label: "Links", Icon: FaLink },
+  { label: "About You", Icon: FaUser },
+  { label: "Products", Icon: FaBoxOpen },
+  { label: "Social Media", Icon: FaShareNodes },
+  { label: "Design", Icon: FaPalette },
+  { label: "Settings", Icon: FaGear },
+];
 
 const kpiCards = [
   { label: "Profile Views", value: "48,219", delta: "+12.4%" },
@@ -343,6 +376,39 @@ const initialProductCategories: ProductCategory[] = [
   },
 ];
 
+const fallbackCatalogProducts: CatalogProduct[] = [
+  { id: "demo-1", name: "Starter Pack", description: "Template bundle for new creators", currency: "USD", amount: 29, imageUrl: "/creator-elena.png", useInLinks: true, createdAt: new Date().toISOString() },
+  { id: "demo-2", name: "Premium Skin", description: "High-end card visual skin", currency: "USD", amount: 49, imageUrl: "/creator-milo.png", useInLinks: true, createdAt: new Date().toISOString() },
+  { id: "demo-3", name: "Avatar Kit", description: "Avatar customization toolkit", currency: "EUR", amount: 19, imageUrl: "/image1.svg", useInLinks: false, createdAt: new Date().toISOString() },
+  { id: "demo-4", name: "Link Booster", description: "Conversion booster module", currency: "INR", amount: 99, imageUrl: "/creator-elena.png", useInLinks: true, createdAt: new Date().toISOString() },
+  { id: "demo-5", name: "Creator Bundle", description: "All-in-one growth bundle", currency: "GBP", amount: 59, imageUrl: "/creator-milo.png", useInLinks: true, createdAt: new Date().toISOString() },
+];
+
+const supportedCurrencies = ["USD", "INR", "EUR", "GBP", "AED", "SGD", "AUD", "CAD", "JPY", "CHF"].map((code) => ({
+  code,
+  label: `${code} - ${currencyCodes.code(code)?.currency ?? code}`,
+}));
+
+const fileToOptimizedDataUrl = async (file: File): Promise<string> => {
+  const imageBitmap = await createImageBitmap(file);
+  const maxWidth = 1280;
+  const scale = imageBitmap.width > maxWidth ? maxWidth / imageBitmap.width : 1;
+  const targetWidth = Math.max(1, Math.round(imageBitmap.width * scale));
+  const targetHeight = Math.max(1, Math.round(imageBitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not process image.");
+  }
+
+  context.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight);
+  imageBitmap.close();
+  return canvas.toDataURL("image/webp", 0.82);
+};
+
 export default function HomeDashboard() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -389,6 +455,21 @@ export default function HomeDashboard() {
   const [productCategories, setProductCategories] = useState<ProductCategory[]>(initialProductCategories);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [openSocialDropdownId, setOpenSocialDropdownId] = useState<string | null>(null);
+  const [showExitBuilderModal, setShowExitBuilderModal] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isProductSubmitting, setIsProductSubmitting] = useState(false);
+  const [productForm, setProductForm] = useState({
+    name: "",
+    description: "",
+    currency: "USD",
+    amount: "",
+    imageUrl: "",
+    imageFileName: "",
+    useInLinks: true,
+  });
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const selectedCard = useMemo(
     () => createdCards.find((card) => card.id === selectedCardId) ?? null,
@@ -396,6 +477,18 @@ export default function HomeDashboard() {
   );
 
   const showRightPane = isBuilderMode || activeTab === "Dashboard" || (activeTab === "My Links" && !!selectedCard);
+  const catalogProductsForPreview = useMemo(
+    () =>
+      catalogProducts
+        .filter((item) => item.useInLinks)
+        .map((item) => ({
+          category: "Catalog",
+          name: item.name,
+          price: `${item.currency} ${item.amount.toFixed(2)}`,
+          imageUrl: item.imageUrl || "/image1.svg",
+        })),
+    [catalogProducts],
+  );
   const rightPaneMode: "dashboard" | "my-links" | "builder" | null = isBuilderMode
     ? "builder"
     : activeTab === "Dashboard"
@@ -405,10 +498,97 @@ export default function HomeDashboard() {
         : null;
 
   const handleExitBuilder = () => {
-    const shouldExit = window.confirm("Are you sure you want to exit? Card building is in process.");
-    if (!shouldExit) return;
+    setShowExitBuilderModal(true);
+  };
+
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+    setTimeout(() => {
+      setToast((current) => (current?.message === message ? null : current));
+    }, 3000);
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        setIsCatalogLoading(true);
+        const response = await fetch("/api/products", { method: "GET" });
+        const payload = (await response.json().catch(() => ({}))) as { products?: CatalogProduct[]; message?: string };
+
+        if (!response.ok) {
+          showToast("error", payload.message ?? "Could not load products.");
+          return;
+        }
+
+        setCatalogProducts(payload.products ?? []);
+      } finally {
+        setIsCatalogLoading(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const confirmExitBuilder = () => {
+    setShowExitBuilderModal(false);
     setIsBuilderMode(false);
     setBuilderSection("Links");
+  };
+
+  const handleCreateProduct = async () => {
+    if (isProductSubmitting) return;
+
+    if (!productForm.name.trim()) {
+      showToast("error", "Product name is required.");
+      return;
+    }
+
+    if (!productForm.amount || Number(productForm.amount) <= 0) {
+      showToast("error", "Amount must be greater than 0.");
+      return;
+    }
+
+    try {
+      setIsProductSubmitting(true);
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: productForm.name.trim(),
+          description: productForm.description.trim(),
+          currency: productForm.currency,
+          amount: Number(productForm.amount),
+          imageUrl: productForm.imageUrl.trim(),
+          useInLinks: productForm.useInLinks,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; product?: CatalogProduct };
+
+      if (!response.ok) {
+        showToast("error", payload.message ?? "Could not create product.");
+        return;
+      }
+
+      if (payload.product) {
+        setCatalogProducts((prev) => [payload.product!, ...prev]);
+      }
+
+      setProductForm({
+        name: "",
+        description: "",
+        currency: "USD",
+        amount: "",
+        imageUrl: "",
+        imageFileName: "",
+        useInLinks: true,
+      });
+      setIsProductModalOpen(false);
+      showToast("success", "Product added successfully.");
+    } finally {
+      setIsProductSubmitting(false);
+    }
   };
 
   const getSocialOption = (platform: string) => socialPlatformOptions.find((opt) => opt.label === platform) ?? socialPlatformOptions[0];
@@ -431,8 +611,8 @@ export default function HomeDashboard() {
     };
   }, [selectedDefaultTheme, selectedDesign]);
   const enabledProductsForPreview = useMemo(
-    () =>
-      productCategories
+    () => [
+      ...productCategories
         .filter((category) => category.enabled)
         .flatMap((category) =>
           category.products
@@ -444,7 +624,9 @@ export default function HomeDashboard() {
               imageUrl: product.imageUrl,
             })),
         ),
-    [productCategories],
+      ...catalogProductsForPreview,
+    ],
+    [catalogProductsForPreview, productCategories],
   );
 
   const handleImageUpload = (
@@ -839,16 +1021,19 @@ export default function HomeDashboard() {
                 <nav className="mt-8 space-y-2">
                   {builderNavItems.map((item) => (
                     <button
-                      key={item}
+                      key={item.label}
                       type="button"
-                      onClick={() => setBuilderSection(item)}
+                      onClick={() => setBuilderSection(item.label)}
                       className={`w-full rounded-full px-4 py-2.5 text-left text-sm font-semibold transition ${
-                        item === builderSection
+                        item.label === builderSection
                           ? "border border-cyan-300/35 bg-gradient-to-r from-[#303356] to-[#143747] text-white"
                           : "text-white/45 hover:bg-white/5 hover:text-white/75"
                       }`}
                     >
-                      {item}
+                      <span className="flex items-center gap-3.5">
+                        <item.Icon className={`h-4 w-4 ${item.label === builderSection ? "text-cyan-200" : "text-white/45"}`} />
+                        {item.label}
+                      </span>
                     </button>
                   ))}
                 </nav>
@@ -857,22 +1042,25 @@ export default function HomeDashboard() {
           ) : (
             <>
               <div>
-                <p className="font-display text-[1.5rem] font-bold uppercase tracking-tight text-white">ANSH Studio</p>
+                <p className="font-display text-[1.5rem] font-bold uppercase tracking-tight text-white">ANSH Links</p>
                 <p className="mt-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] text-white/34">Creator Console</p>
 
                 <nav className="mt-8 space-y-2">
                   {primaryNavItems.map((item) => (
                     <button
-                      key={item}
+                      key={item.label}
                       type="button"
-                      onClick={() => setActiveTab(item)}
+                      onClick={() => setActiveTab(item.label)}
                       className={`w-full rounded-full px-4 py-2.5 text-left text-sm font-semibold transition ${
-                        item === activeTab
+                        item.label === activeTab
                           ? "border border-cyan-300/35 bg-gradient-to-r from-[#303356] to-[#143747] text-white"
                           : "text-white/45 hover:bg-white/5 hover:text-white/75"
                       }`}
                     >
-                      {item}
+                      <span className="flex items-center gap-3.5">
+                        <item.Icon className={`h-4 w-4 ${item.label === activeTab ? "text-cyan-200" : "text-white/45"}`} />
+                        {item.label}
+                      </span>
                     </button>
                   ))}
                 </nav>
@@ -882,16 +1070,19 @@ export default function HomeDashboard() {
                 <nav className="space-y-2">
                   {utilityNavItems.map((item) => (
                     <button
-                      key={item}
+                      key={item.label}
                       type="button"
-                      onClick={() => setActiveTab(item)}
+                      onClick={() => setActiveTab(item.label)}
                       className={`w-full rounded-full px-4 py-2.5 text-left text-sm font-semibold transition ${
-                        item === activeTab
+                        item.label === activeTab
                           ? "border border-cyan-300/35 bg-gradient-to-r from-[#303356] to-[#143747] text-white"
                           : "text-white/45 hover:bg-white/5 hover:text-white/75"
                       }`}
                     >
-                      {item}
+                      <span className="flex items-center gap-3.5">
+                        <item.Icon className={`h-4 w-4 ${item.label === activeTab ? "text-cyan-200" : "text-white/45"}`} />
+                        {item.label}
+                      </span>
                     </button>
                   ))}
                 </nav>
@@ -1734,84 +1925,54 @@ export default function HomeDashboard() {
                 })}
               </div>
             </>
-          ) : activeTab === "Add My Products" ? (
+          ) : activeTab === "My Products" ? (
             <>
               <header className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">Add My Products</p>
+                  <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">My Products</p>
                   <h1 className="mt-3 text-[2.6rem] font-semibold leading-[0.95] tracking-tight">Product Catalog</h1>
                   <p className="mt-2 max-w-[620px] text-white/56">
-                    Create categories and products here. Enabled products can be shown on cards as square product tiles.
+                    Add products for your catalog. Toggle use in links while adding to make products appear in your card links section.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsProductModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-md border border-cyan-300/35 bg-gradient-to-r from-[#27355a] to-[#124054] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  <FaPlus className="h-3.5 w-3.5" />
+                  Add Product
+                </button>
               </header>
 
-              <div className="mt-8 space-y-4">
-                {productCategories.map((category) => (
-                  <div key={`catalog-${category.id}`} className="rounded-xl border border-white/10 bg-[#0f1321] p-4">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setProductCategories((prev) =>
-                            prev.map((item) => (item.id === category.id ? { ...item, enabled: !item.enabled } : item)),
-                          )
-                        }
-                        className={`rounded-md border px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
-                          category.enabled ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/15 bg-white/[0.03] text-white/45"
-                        }`}
-                      >
-                        {category.enabled ? "On" : "Off"}
-                      </button>
-                      <input
-                        value={category.name}
-                        onChange={(e) =>
-                          setProductCategories((prev) =>
-                            prev.map((item) => (item.id === category.id ? { ...item, name: e.target.value } : item)),
-                          )
-                        }
-                        className="min-w-0 flex-1 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
+              <div className="mt-8">
+                {isCatalogLoading ? <p className="text-sm text-white/60">Loading products...</p> : null}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                  {(catalogProducts.length ? catalogProducts : fallbackCatalogProducts).map((product) => (
+                    <div key={`catalog-product-${product.id}`} className="rounded-xl border border-white/10 bg-[#101526] p-3">
+                      <div
+                        className="h-32 rounded-md bg-cover bg-center"
+                        style={{ backgroundImage: `url('${product.imageUrl || "/image1.svg"}')` }}
                       />
-                    </div>
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {category.products.map((product) => (
-                        <div key={`catalog-product-${product.id}`} className="rounded-lg border border-white/10 bg-[#101526] p-3">
-                          <div
-                            className="h-28 rounded-md bg-cover bg-center"
-                            style={{ backgroundImage: `url('${product.imageUrl}')` }}
-                          />
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <p className="truncate text-sm font-semibold">{product.name}</p>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setProductCategories((prev) =>
-                                  prev.map((cat) =>
-                                    cat.id === category.id
-                                      ? {
-                                          ...cat,
-                                          products: cat.products.map((prod) =>
-                                            prod.id === product.id ? { ...prod, enabled: !prod.enabled } : prod,
-                                          ),
-                                        }
-                                      : cat,
-                                  ),
-                                )
-                              }
-                              className={`rounded-md border px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] ${
-                                product.enabled ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/15 text-white/45"
-                              }`}
-                            >
-                              {product.enabled ? "On" : "Off"}
-                            </button>
-                          </div>
-                          <p className="mt-1 text-xs text-white/55">{product.price}</p>
+                      <div className="mt-3 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">{product.name}</p>
+                          <p className="mt-0.5 truncate text-xs text-white/55">{product.description || "No description added."}</p>
                         </div>
-                      ))}
+                        <span
+                          className={`rounded-md border px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] ${
+                            product.useInLinks ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/15 text-white/45"
+                          }`}
+                        >
+                          {product.useInLinks ? "In Links" : "Catalog"}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-white/85">
+                        {product.currency} {product.amount.toFixed(2)}
+                      </p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </>
           ) : (
@@ -2024,6 +2185,185 @@ export default function HomeDashboard() {
           </aside>
         ) : null}
       </section>
+
+      {showExitBuilderModal ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-300/25 bg-[#0d1220] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#22deff]">Confirm Exit</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">Leave card builder?</h3>
+            <p className="mt-3 text-sm text-white/65">
+              Your current builder progress will stay in this session, but you will exit the editor view.
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowExitBuilderModal(false)}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmExitBuilder}
+                className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110"
+              >
+                Exit Builder
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isProductModalOpen ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-cyan-300/25 bg-[#0d1220] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#22deff]">New Product</p>
+                <h3 className="mt-1 text-2xl font-semibold text-white">Add product details</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsProductModalOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-white/[0.02] text-white/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Close product modal"
+              >
+                <FaXmark className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Product Name *</span>
+                <input
+                  value={productForm.name}
+                  onChange={(event) => setProductForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="e.g. Creator Hoodie"
+                  className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Product Description</span>
+                <textarea
+                  value={productForm.description}
+                  onChange={(event) => setProductForm((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder="Optional short description"
+                  rows={3}
+                  className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                <label className="block">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Currency *</span>
+                  <select
+                    value={productForm.currency}
+                    onChange={(event) => setProductForm((prev) => ({ ...prev, currency: event.target.value }))}
+                    className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                  >
+                    {supportedCurrencies.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Amount *</span>
+                  <input
+                    value={productForm.amount}
+                    onChange={(event) => setProductForm((prev) => ({ ...prev, amount: event.target.value }))}
+                    placeholder="0.00"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Product Image (optional)</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+
+                    try {
+                      const optimizedImage = await fileToOptimizedDataUrl(file);
+                      setProductForm((prev) => ({
+                        ...prev,
+                        imageUrl: optimizedImage,
+                        imageFileName: file.name,
+                      }));
+                    } catch {
+                      showToast("error", "Could not process selected image.");
+                    }
+                  }}
+                  className="mt-2 w-full cursor-pointer rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white file:mr-3 file:rounded-md file:border-0 file:bg-cyan-300/20 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-cyan-100 hover:file:bg-cyan-300/30"
+                />
+                <p className="mt-2 text-xs text-white/50">
+                  {productForm.imageFileName ? `Selected: ${productForm.imageFileName}` : "No image selected."}
+                </p>
+                {productForm.imageUrl ? (
+                  <div className="mt-3 h-24 w-full rounded-md border border-white/12 bg-cover bg-center" style={{ backgroundImage: `url('${productForm.imageUrl}')` }} />
+                ) : null}
+              </label>
+
+              <div className="flex items-center justify-between rounded-md border border-white/10 bg-[#0f1424] px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-semibold text-white/90">Use in Links</p>
+                  <p className="text-xs text-white/50">Enable this to show the product in links/products preview.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProductForm((prev) => ({ ...prev, useInLinks: !prev.useInLinks }))}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
+                    productForm.useInLinks ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/20 text-white/55"
+                  }`}
+                >
+                  {productForm.useInLinks ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsProductModalOpen(false)}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateProduct}
+                disabled={isProductSubmitting}
+                className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110 disabled:opacity-70"
+              >
+                {isProductSubmitting ? "Saving..." : "Save Product"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div className="pointer-events-none absolute right-4 top-4 z-40">
+          <div
+            className={`rounded-md border px-4 py-3 text-sm font-semibold shadow-lg ${
+              toast.type === "success"
+                ? "border-emerald-300/35 bg-emerald-500/15 text-emerald-100"
+                : "border-rose-300/35 bg-rose-500/15 text-rose-100"
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

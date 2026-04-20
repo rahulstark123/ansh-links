@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import GoogleAuthButton from "@/components/auth/google-auth-button";
 
 export const metadata: Metadata = {
   title: "Sign Up | Ansh Links",
@@ -44,13 +45,11 @@ export default function SignupPage() {
           <h2 className="font-display text-[2.3rem] font-bold leading-none">Create Account</h2>
           <p className="mt-2 text-white/58">Welcome to the future of digital asset curation.</p>
 
-          <button
-            type="button"
+          <GoogleAuthButton
+            nextPath="/onboarding"
+            label="Login with Google"
             className="mt-7 flex w-full items-center justify-center gap-2 rounded-md border border-cyan-300/30 bg-[#14222a]/60 py-3.5 font-semibold text-white/88 transition hover:border-cyan-300/50 hover:bg-[#172a35]"
-          >
-            <span className="grid h-6 w-6 place-items-center rounded-full border border-white/20 bg-white/5 text-sm font-bold text-[#22deff]">G</span>
-            Login with Google
-          </button>
+          />
 
           <div className="my-6 flex items-center gap-3 text-[0.62rem] font-bold uppercase tracking-[0.13em] text-white/38">
             <div className="h-px flex-1 bg-white/12" />

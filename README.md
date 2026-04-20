@@ -35,3 +35,11 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 # ansh-links
+
+## Prisma + Supabase setup
+
+1. Copy `.env.example` to `.env`.
+2. Replace `DATABASE_URL` with your Supabase pooler connection string.
+3. Replace `DIRECT_URL` with your Supabase direct connection string.
+4. Run `npm run prisma:generate`.
+5. Run `npm run prisma:migrate -- --name init`.
