@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import currencyCodes from "currency-codes";
 import type { IconType } from "react-icons";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUiStore } from "@/store/ui-store";
 import {
   FaBehance,
   FaBoxOpen,
+  FaArrowRightFromBracket,
   FaCheck,
   FaChevronDown,
   FaCompass,
@@ -74,11 +78,21 @@ type CatalogProduct = {
   id: string;
   name: string;
   description: string | null;
+  linkUrl: string | null;
   currency: string;
   amount: number;
   imageUrl: string | null;
   useInLinks: boolean;
   createdAt: string;
+  category: {
+    id: string;
+    name: string;
+  };
+};
+
+type CatalogCategory = {
+  id: string;
+  name: string;
 };
 
 type SuggestionItem = {
@@ -376,14 +390,6 @@ const initialProductCategories: ProductCategory[] = [
   },
 ];
 
-const fallbackCatalogProducts: CatalogProduct[] = [
-  { id: "demo-1", name: "Starter Pack", description: "Template bundle for new creators", currency: "USD", amount: 29, imageUrl: "/creator-elena.png", useInLinks: true, createdAt: new Date().toISOString() },
-  { id: "demo-2", name: "Premium Skin", description: "High-end card visual skin", currency: "USD", amount: 49, imageUrl: "/creator-milo.png", useInLinks: true, createdAt: new Date().toISOString() },
-  { id: "demo-3", name: "Avatar Kit", description: "Avatar customization toolkit", currency: "EUR", amount: 19, imageUrl: "/image1.svg", useInLinks: false, createdAt: new Date().toISOString() },
-  { id: "demo-4", name: "Link Booster", description: "Conversion booster module", currency: "INR", amount: 99, imageUrl: "/creator-elena.png", useInLinks: true, createdAt: new Date().toISOString() },
-  { id: "demo-5", name: "Creator Bundle", description: "All-in-one growth bundle", currency: "GBP", amount: 59, imageUrl: "/creator-milo.png", useInLinks: true, createdAt: new Date().toISOString() },
-];
-
 const supportedCurrencies = ["USD", "INR", "EUR", "GBP", "AED", "SGD", "AUD", "CAD", "JPY", "CHF"].map((code) => ({
   code,
   label: `${code} - ${currencyCodes.code(code)?.currency ?? code}`,
@@ -452,24 +458,29 @@ export default function HomeDashboard() {
     { id: "social-2", platform: "YouTube", enabled: true, url: "https://youtube.com/", customPlatform: "" },
     { id: "social-3", platform: "X / Twitter", enabled: true, url: "https://x.com/", customPlatform: "" },
   ]);
-  const [productCategories, setProductCategories] = useState<ProductCategory[]>(initialProductCategories);
-  const [newCategoryName, setNewCategoryName] = useState("");
   const [openSocialDropdownId, setOpenSocialDropdownId] = useState<string | null>(null);
   const [showExitBuilderModal, setShowExitBuilderModal] = useState(false);
-  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isProductSubmitting, setIsProductSubmitting] = useState(false);
+  const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
   const [productForm, setProductForm] = useState({
     name: "",
     description: "",
+    linkUrl: "",
     currency: "USD",
     amount: "",
     imageUrl: "",
     imageFileName: "",
+    categoryId: "",
     useInLinks: true,
   });
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [newProductCategoryName, setNewProductCategoryName] = useState("");
+  const [builderProductVisibility, setBuilderProductVisibility] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
+  const toast = useUiStore((state) => state.toast);
+  const showToastStore = useUiStore((state) => state.showToast);
+  const clearToast = useUiStore((state) => state.clearToast);
+  const isProductModalOpen = useUiStore((state) => state.isProductModalOpen);
+  const setProductModalOpen = useUiStore((state) => state.setProductModalOpen);
 
   const selectedCard = useMemo(
     () => createdCards.find((card) => card.id === selectedCardId) ?? null,
@@ -477,17 +488,43 @@ export default function HomeDashboard() {
   );
 
   const showRightPane = isBuilderMode || activeTab === "Dashboard" || (activeTab === "My Links" && !!selectedCard);
+  const { data: productsQueryData, isLoading: isCatalogLoading } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const response = await fetch("/api/products", { method: "GET" });
+      const payload = (await response.json().catch(() => ({}))) as { products?: CatalogProduct[]; message?: string };
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Could not load products.");
+      }
+      return payload;
+    },
+  });
+
+  const catalogProducts = productsQueryData?.products ?? [];
+  const { data: categoriesQueryData } = useQuery({
+    queryKey: ["product-categories"],
+    queryFn: async () => {
+      const response = await fetch("/api/product-categories", { method: "GET" });
+      const payload = (await response.json().catch(() => ({}))) as { categories?: CatalogCategory[]; message?: string };
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Could not load categories.");
+      }
+      return payload;
+    },
+  });
+  const catalogCategories = categoriesQueryData?.categories ?? [];
+
   const catalogProductsForPreview = useMemo(
     () =>
       catalogProducts
-        .filter((item) => item.useInLinks)
+        .filter((item) => builderProductVisibility[item.id] ?? item.useInLinks)
         .map((item) => ({
-          category: "Catalog",
+          category: item.category.name,
           name: item.name,
           price: `${item.currency} ${item.amount.toFixed(2)}`,
           imageUrl: item.imageUrl || "/image1.svg",
         })),
-    [catalogProducts],
+    [builderProductVisibility, catalogProducts],
   );
   const rightPaneMode: "dashboard" | "my-links" | "builder" | null = isBuilderMode
     ? "builder"
@@ -502,33 +539,65 @@ export default function HomeDashboard() {
   };
 
   const showToast = (type: "success" | "error", message: string) => {
-    setToast({ type, message });
+    showToastStore({ type, message });
     setTimeout(() => {
-      setToast((current) => (current?.message === message ? null : current));
+      clearToast();
     }, 3000);
   };
 
-  useEffect(() => {
-    const run = async () => {
-      try {
-        setIsCatalogLoading(true);
-        const response = await fetch("/api/products", { method: "GET" });
-        const payload = (await response.json().catch(() => ({}))) as { products?: CatalogProduct[]; message?: string };
+  const createProductMutation = useMutation({
+    mutationFn: async (payload: {
+      name: string;
+      description: string;
+      linkUrl: string;
+      currency: string;
+      amount: number;
+      imageUrl: string;
+      categoryId: string;
+      useInLinks: boolean;
+    }) => {
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-        if (!response.ok) {
-          showToast("error", payload.message ?? "Could not load products.");
-          return;
-        }
+      const responseBody = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        product?: CatalogProduct;
+      };
 
-        setCatalogProducts(payload.products ?? []);
-      } finally {
-        setIsCatalogLoading(false);
+      if (!response.ok) {
+        throw new Error(responseBody.message ?? "Could not create product.");
       }
-    };
 
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return responseBody;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (payload: { name: string }) => {
+      const response = await fetch("/api/product-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responseBody = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        category?: CatalogCategory;
+      };
+      if (!response.ok) {
+        throw new Error(responseBody.message ?? "Could not create category.");
+      }
+      return responseBody;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["product-categories"] });
+    },
+  });
 
   const confirmExitBuilder = () => {
     setShowExitBuilderModal(false);
@@ -548,47 +617,69 @@ export default function HomeDashboard() {
       showToast("error", "Amount must be greater than 0.");
       return;
     }
+    if (!productForm.categoryId) {
+      showToast("error", "Please select a product category.");
+      return;
+    }
 
     try {
       setIsProductSubmitting(true);
-      const response = await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: productForm.name.trim(),
-          description: productForm.description.trim(),
-          currency: productForm.currency,
-          amount: Number(productForm.amount),
-          imageUrl: productForm.imageUrl.trim(),
-          useInLinks: productForm.useInLinks,
-        }),
+      await createProductMutation.mutateAsync({
+        name: productForm.name.trim(),
+        description: productForm.description.trim(),
+        linkUrl: productForm.linkUrl.trim(),
+        currency: productForm.currency,
+        amount: Number(productForm.amount),
+        imageUrl: productForm.imageUrl.trim(),
+        categoryId: productForm.categoryId,
+        useInLinks: productForm.useInLinks,
       });
-
-      const payload = (await response.json().catch(() => ({}))) as { message?: string; product?: CatalogProduct };
-
-      if (!response.ok) {
-        showToast("error", payload.message ?? "Could not create product.");
-        return;
-      }
-
-      if (payload.product) {
-        setCatalogProducts((prev) => [payload.product!, ...prev]);
-      }
 
       setProductForm({
         name: "",
         description: "",
+        linkUrl: "",
         currency: "USD",
         amount: "",
         imageUrl: "",
         imageFileName: "",
+        categoryId: catalogCategories[0]?.id ?? "",
         useInLinks: true,
       });
-      setIsProductModalOpen(false);
+      setProductModalOpen(false);
       showToast("success", "Product added successfully.");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not create product.");
     } finally {
       setIsProductSubmitting(false);
     }
+  };
+
+  const handleCreateCategory = async () => {
+    const trimmedName = newProductCategoryName.trim();
+    if (!trimmedName) {
+      showToast("error", "Category name is required.");
+      return;
+    }
+    try {
+      setIsCategorySubmitting(true);
+      const response = await createCategoryMutation.mutateAsync({ name: trimmedName });
+      if (response.category) {
+        setProductForm((prev) => ({ ...prev, categoryId: response.category!.id }));
+      }
+      setNewProductCategoryName("");
+      showToast("success", "Category created.");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not create category.");
+    } finally {
+      setIsCategorySubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
   };
 
   const getSocialOption = (platform: string) => socialPlatformOptions.find((opt) => opt.label === platform) ?? socialPlatformOptions[0];
@@ -610,24 +701,7 @@ export default function HomeDashboard() {
       ribbonTextClass: selectedDefaultTheme.ribbonTextClass,
     };
   }, [selectedDefaultTheme, selectedDesign]);
-  const enabledProductsForPreview = useMemo(
-    () => [
-      ...productCategories
-        .filter((category) => category.enabled)
-        .flatMap((category) =>
-          category.products
-            .filter((product) => product.enabled)
-            .map((product) => ({
-              category: category.name,
-              name: product.name,
-              price: product.price,
-              imageUrl: product.imageUrl,
-            })),
-        ),
-      ...catalogProductsForPreview,
-    ],
-    [catalogProductsForPreview, productCategories],
-  );
+  const enabledProductsForPreview = useMemo(() => [...catalogProductsForPreview], [catalogProductsForPreview]);
 
   const handleImageUpload = (
     event: ChangeEvent<HTMLInputElement>,
@@ -1086,6 +1160,16 @@ export default function HomeDashboard() {
                     </button>
                   ))}
                 </nav>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-3 w-full rounded-full border border-rose-300/20 bg-rose-500/10 px-4 py-2.5 text-left text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20"
+                >
+                  <span className="flex items-center gap-3.5">
+                    <FaArrowRightFromBracket className="h-4 w-4" />
+                    Logout
+                  </span>
+                </button>
               </div>
             </>
           )}
@@ -1272,181 +1356,63 @@ export default function HomeDashboard() {
                 <div className="mt-8 rounded-xl border border-white/10 bg-[#0f1321] p-5">
                   <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Products</p>
                   <p className="mt-2 text-xs text-white/55">
-                    Enable categories/products to show them as square cards in preview.
+                    Select existing products and toggle which ones should appear in your live preview.
                   </p>
-
-                  <div className="mt-4 space-y-4">
-                    {productCategories.map((category) => (
-                      <div key={category.id} className="rounded-lg border border-white/10 bg-[#0c101a] p-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setProductCategories((prev) =>
-                                prev.map((item) =>
-                                  item.id === category.id ? { ...item, enabled: !item.enabled } : item,
-                                ),
-                              )
-                            }
-                            className={`rounded-md border px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
-                              category.enabled
-                                ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                                : "border-white/15 bg-white/[0.03] text-white/45"
-                            }`}
-                          >
-                            {category.enabled ? "On" : "Off"}
-                          </button>
-                          <input
-                            value={category.name}
-                            onChange={(e) =>
-                              setProductCategories((prev) =>
-                                prev.map((item) => (item.id === category.id ? { ...item, name: e.target.value } : item)),
-                              )
-                            }
-                            className="min-w-0 flex-1 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                          />
-                        </div>
-
-                        <div className="mt-3 space-y-3">
-                          {category.products.map((product) => (
-                            <div key={product.id} className="grid gap-2 rounded-md border border-white/10 bg-[#111726] p-2.5 sm:grid-cols-[72px_1fr_90px_88px]">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setProductCategories((prev) =>
-                                    prev.map((cat) =>
-                                      cat.id === category.id
-                                        ? {
-                                            ...cat,
-                                            products: cat.products.map((prod) =>
-                                              prod.id === product.id ? { ...prod, enabled: !prod.enabled } : prod,
-                                            ),
-                                          }
-                                        : cat,
-                                    ),
-                                  )
-                                }
-                                className={`rounded-md border px-2 py-2 text-xs font-bold uppercase tracking-[0.1em] transition ${
-                                  product.enabled
-                                    ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                                    : "border-white/15 bg-white/[0.03] text-white/45"
-                                }`}
-                              >
-                                {product.enabled ? "On" : "Off"}
-                              </button>
-                              <input
-                                value={product.name}
-                                onChange={(e) =>
-                                  setProductCategories((prev) =>
-                                    prev.map((cat) =>
-                                      cat.id === category.id
-                                        ? {
-                                            ...cat,
-                                            products: cat.products.map((prod) =>
-                                              prod.id === product.id ? { ...prod, name: e.target.value } : prod,
-                                            ),
-                                          }
-                                        : cat,
-                                    ),
-                                  )
-                                }
-                                placeholder="Product name"
-                                className="rounded-md border border-white/12 bg-[#0c101a] px-2.5 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                              />
-                              <input
-                                value={product.price}
-                                onChange={(e) =>
-                                  setProductCategories((prev) =>
-                                    prev.map((cat) =>
-                                      cat.id === category.id
-                                        ? {
-                                            ...cat,
-                                            products: cat.products.map((prod) =>
-                                              prod.id === product.id ? { ...prod, price: e.target.value } : prod,
-                                            ),
-                                          }
-                                        : cat,
-                                    ),
-                                  )
-                                }
-                                placeholder="$99"
-                                className="rounded-md border border-white/12 bg-[#0c101a] px-2.5 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                              />
-                              <input
-                                value={product.imageUrl}
-                                onChange={(e) =>
-                                  setProductCategories((prev) =>
-                                    prev.map((cat) =>
-                                      cat.id === category.id
-                                        ? {
-                                            ...cat,
-                                            products: cat.products.map((prod) =>
-                                              prod.id === product.id ? { ...prod, imageUrl: e.target.value } : prod,
-                                            ),
-                                          }
-                                        : cat,
-                                    ),
-                                  )
-                                }
-                                placeholder="Image URL"
-                                className="rounded-md border border-white/12 bg-[#0c101a] px-2.5 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setProductCategories((prev) =>
-                              prev.map((cat) =>
-                                cat.id === category.id
-                                  ? {
-                                      ...cat,
-                                      products: [
-                                        ...cat.products,
-                                        {
-                                          id: `prod-${Date.now()}`,
-                                          name: "New Product",
-                                          price: "$0",
-                                          imageUrl: "/image1.svg",
-                                          enabled: true,
-                                        },
-                                      ],
-                                    }
-                                  : cat,
-                              ),
-                            )
-                          }
-                          className="mt-3 rounded-md border border-dashed border-white/20 bg-white/[0.02] px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:text-white"
-                        >
-                          + Add Product
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 flex gap-2">
-                    <input
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="New category name (e.g. My Merch)"
-                      className="min-w-0 flex-1 rounded-md border border-white/12 bg-[#0c101a] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                    />
+                  <div className="mt-4 flex justify-end">
                     <button
                       type="button"
                       onClick={() => {
-                        if (!newCategoryName.trim()) return;
-                        setProductCategories((prev) => [
+                        setProductForm((prev) => ({
                           ...prev,
-                          { id: `cat-${Date.now()}`, name: newCategoryName.trim(), enabled: true, products: [] },
-                        ]);
-                        setNewCategoryName("");
+                          categoryId: prev.categoryId || catalogCategories[0]?.id || "",
+                        }));
+                        setProductModalOpen(true);
                       }}
-                      className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm font-semibold text-white/80 transition hover:text-white"
+                      className="inline-flex items-center gap-2 rounded-md border border-cyan-300/35 bg-gradient-to-r from-[#27355a] to-[#124054] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110"
                     >
-                      Add Category
+                      <FaPlus className="h-3.5 w-3.5" />
+                      Create Product
                     </button>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {!catalogProducts.length ? (
+                      <div className="rounded-lg border border-white/10 bg-[#0c101a] p-4 text-sm text-white/55">
+                        No products available. Use <span className="font-semibold text-white/80">Create Product</span> to add one.
+                      </div>
+                    ) : null}
+                    {catalogProducts.map((product) => {
+                      const enabled = builderProductVisibility[product.id] ?? product.useInLinks;
+                      return (
+                        <div key={`builder-catalog-product-${product.id}`} className="rounded-lg border border-white/10 bg-[#0c101a] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">{product.name}</p>
+                              <p className="mt-0.5 text-[0.65rem] font-bold uppercase tracking-[0.1em] text-cyan-200/80">{product.category.name}</p>
+                              <p className="mt-1 text-xs text-white/55">
+                                {product.currency} {product.amount.toFixed(2)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBuilderProductVisibility((prev) => ({
+                                  ...prev,
+                                  [product.id]: !(prev[product.id] ?? product.useInLinks),
+                                }))
+                              }
+                              className={`rounded-md border px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
+                                enabled
+                                  ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                                  : "border-white/15 bg-white/[0.03] text-white/45"
+                              }`}
+                            >
+                              {enabled ? "On" : "Off"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : builderSection === "About You" ? (
@@ -1937,7 +1903,13 @@ export default function HomeDashboard() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsProductModalOpen(true)}
+                  onClick={() => {
+                    setProductForm((prev) => ({
+                      ...prev,
+                      categoryId: prev.categoryId || catalogCategories[0]?.id || "",
+                    }));
+                    setProductModalOpen(true);
+                  }}
                   className="inline-flex items-center gap-2 rounded-md border border-cyan-300/35 bg-gradient-to-r from-[#27355a] to-[#124054] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
                 >
                   <FaPlus className="h-3.5 w-3.5" />
@@ -1947,8 +1919,13 @@ export default function HomeDashboard() {
 
               <div className="mt-8">
                 {isCatalogLoading ? <p className="text-sm text-white/60">Loading products...</p> : null}
+                {!catalogProducts.length && !isCatalogLoading ? (
+                  <div className="rounded-xl border border-white/10 bg-[#0f1321] p-6 text-sm text-white/60">
+                    No products yet. Click <span className="font-semibold text-white/85">Add Product</span> to create your first one.
+                  </div>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-                  {(catalogProducts.length ? catalogProducts : fallbackCatalogProducts).map((product) => (
+                  {catalogProducts.map((product) => (
                     <div key={`catalog-product-${product.id}`} className="rounded-xl border border-white/10 bg-[#101526] p-3">
                       <div
                         className="h-32 rounded-md bg-cover bg-center"
@@ -1957,6 +1934,9 @@ export default function HomeDashboard() {
                       <div className="mt-3 flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-white">{product.name}</p>
+                          <p className="mt-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-cyan-200/80">
+                            {product.category.name}
+                          </p>
                           <p className="mt-0.5 truncate text-xs text-white/55">{product.description || "No description added."}</p>
                         </div>
                         <span
@@ -2224,7 +2204,7 @@ export default function HomeDashboard() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsProductModalOpen(false)}
+                onClick={() => setProductModalOpen(false)}
                 className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-white/[0.02] text-white/70 transition hover:bg-white/10 hover:text-white"
                 aria-label="Close product modal"
               >
@@ -2253,6 +2233,52 @@ export default function HomeDashboard() {
                   className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
                 />
               </label>
+
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Product Link</span>
+                <input
+                  value={productForm.linkUrl}
+                  onChange={(event) => setProductForm((prev) => ({ ...prev, linkUrl: event.target.value }))}
+                  placeholder="https://example.com/product"
+                  className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                />
+              </label>
+
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Product Category *</span>
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    disabled={isCategorySubmitting}
+                    className="inline-flex items-center gap-1 rounded-md border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60"
+                  >
+                    <FaPlus className="h-3 w-3" />
+                    Add Category
+                  </button>
+                </div>
+
+                <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_170px]">
+                  <select
+                    value={productForm.categoryId}
+                    onChange={(event) => setProductForm((prev) => ({ ...prev, categoryId: event.target.value }))}
+                    className="w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                  >
+                    <option value="">Select category</option>
+                    {catalogCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={newProductCategoryName}
+                    onChange={(event) => setNewProductCategoryName(event.target.value)}
+                    placeholder="New category"
+                    className="w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                  />
+                </div>
+              </div>
 
               <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
                 <label className="block">
@@ -2333,7 +2359,7 @@ export default function HomeDashboard() {
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setIsProductModalOpen(false)}
+                onClick={() => setProductModalOpen(false)}
                 className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
               >
                 Cancel

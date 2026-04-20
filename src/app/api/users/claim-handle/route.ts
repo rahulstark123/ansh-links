@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   try {
     const now = new Date();
 
-    await prisma.user.upsert({
+    const appUser = await prisma.user.upsert({
       where: { email: user.email },
       update: {
         authProvider: "google",
@@ -55,9 +55,12 @@ export async function POST(request: Request) {
         lastLoginAt: now,
         loginCount: 1,
       },
+      select: {
+        workspaceId: true,
+      },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, workspaceId: appUser.workspaceId, wid: appUser.workspaceId });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ message: "This handle is already taken." }, { status: 409 });

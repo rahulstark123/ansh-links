@@ -15,6 +15,7 @@ datasource db {
 
 model User {
   id            String   @id @default(cuid())
+  workspaceId   Int      @unique @default(autoincrement())
   email         String   @unique
   handle        String?  @unique
   fullName      String?
@@ -26,6 +27,7 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   products      Product[]
+  categories    ProductCategory[]
 
   @@map("users")
 }
@@ -33,8 +35,11 @@ model User {
 model Product {
   id          String   @id @default(cuid())
   userId      String
+  workspaceId Int
+  categoryId  String
   name        String
   description String?
+  linkUrl     String?
   currency    String
   amount      Float
   imageUrl    String?
@@ -42,7 +47,25 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
   @@map("products")
+}
+
+model ProductCategory {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId Int
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@unique([workspaceId, name])
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("product_categories")
 }
