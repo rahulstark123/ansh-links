@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #05050a;
+  --foreground: #f4f5fb;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sora);
+  --font-display: var(--font-rajdhani);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sora), sans-serif;
+}
+
+::selection {
+  background: #26dcff;
+  color: #07070d;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.float-soft {
+  animation: float 5s ease-in-out infinite;
+}
+
+.scrollbar-ansh {
+  scrollbar-width: thin;
+  scrollbar-color: #22deff55 #0a1020;
+}
+
+.scrollbar-ansh::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scrollbar-ansh::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #0a1020 0%, #090d18 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.scrollbar-ansh::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #b983ff 0%, #22deff 100%);
+  border-radius: 9999px;
+  border: 2px solid #0b101c;
+  box-shadow: 0 0 10px rgba(34, 222, 255, 0.35);
+}
+
+.scrollbar-ansh::-webkit-scrollbar-thumb:hover {
+  filter: brightness(1.1);
+}
+
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
 }
