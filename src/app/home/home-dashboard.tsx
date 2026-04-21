@@ -38,18 +38,12 @@ type CardItem = {
   id: string;
   name: string;
   handle: string;
+  cardSlug: string;
+  shareUrl: string;
   status: "Live" | "Draft";
   updatedAt: string;
   links: string[];
   cover: string;
-};
-
-type SocialLinkRow = {
-  id: string;
-  platform: string;
-  enabled: boolean;
-  url: string;
-  customPlatform: string;
 };
 
 type CardLinkRow = {
@@ -93,6 +87,32 @@ type CatalogProduct = {
 type CatalogCategory = {
   id: string;
   name: string;
+};
+
+type CoverPreset = {
+  id: string;
+  label: string;
+  imageUrl: string;
+};
+
+type SavedSocialLink = {
+  id: string;
+  platform: string;
+  accountName: string | null;
+  customPlatform: string | null;
+  url: string;
+  useInCardBuilder: boolean;
+};
+
+type StoredCard = {
+  id: string;
+  title: string;
+  cardSlug: string;
+  isLive: boolean;
+  status: string;
+  coverImageUrl: string | null;
+  updatedAt: string;
+  links: Array<{ label?: string; url?: string; enabled?: boolean }> | null;
 };
 
 type SuggestionItem = {
@@ -168,6 +188,7 @@ const primaryNavItems: { label: string; Icon: IconType }[] = [
   { label: "Dashboard", Icon: FaHouse },
   { label: "My Links", Icon: FaLink },
   { label: "My Products", Icon: FaBoxOpen },
+  { label: "Social Media", Icon: FaShareNodes },
   { label: "Explore", Icon: FaCompass },
 ];
 const utilityNavItems: { label: string; Icon: IconType }[] = [{ label: "Settings", Icon: FaGear }];
@@ -343,6 +364,8 @@ const createdCards: CardItem[] = [
     id: "aria",
     name: "Aria Flux",
     handle: "ansh.cards/aria-flux",
+    cardSlug: "aria-flux",
+    shareUrl: "https://links.anshapps.in/aria/aria-flux",
     status: "Live",
     updatedAt: "Updated 3 min ago",
     links: ["Latest Portfolio", "Github Repository", "Book a Call"],
@@ -352,6 +375,8 @@ const createdCards: CardItem[] = [
     id: "elena",
     name: "Elena Vane",
     handle: "ansh.cards/elena-vane",
+    cardSlug: "elena-vane",
+    shareUrl: "https://links.anshapps.in/elena/elena-vane",
     status: "Live",
     updatedAt: "Updated 1 hour ago",
     links: ["Design Lookbook", "Press Kit", "Contact Studio"],
@@ -361,6 +386,8 @@ const createdCards: CardItem[] = [
     id: "milo",
     name: "Milo Chen",
     handle: "ansh.cards/milo-chen",
+    cardSlug: "milo-chen",
+    shareUrl: "https://links.anshapps.in/milo/milo-chen",
     status: "Draft",
     updatedAt: "Updated yesterday",
     links: ["Gaming Highlights", "Discord", "Merch Store"],
@@ -421,7 +448,6 @@ export default function HomeDashboard() {
   const [isBuilderMode, setIsBuilderMode] = useState(false);
   const [builderSection, setBuilderSection] = useState("Links");
   const [draftTitle, setDraftTitle] = useState("New Creator Card");
-  const [draftHandle, setDraftHandle] = useState("ansh.cards/new-creator");
   const [draftBio, setDraftBio] = useState("Add your intro to tell visitors what you do and what they should click first.");
   const [draftLinkRows, setDraftLinkRows] = useState<CardLinkRow[]>([
     { id: "link-1", label: "Portfolio", url: "https://ansh.cards/portfolio", enabled: true },
@@ -453,15 +479,21 @@ export default function HomeDashboard() {
   const [profileImageUrl, setProfileImageUrl] = useState("/creator-elena.png");
   const [avatarImageUrl, setAvatarImageUrl] = useState("/digital-avatar.svg");
   const [coverImageUrl, setCoverImageUrl] = useState("/creator-milo.png");
-  const [draftSocialRows, setDraftSocialRows] = useState<SocialLinkRow[]>([
-    { id: "social-1", platform: "Instagram", enabled: true, url: "https://instagram.com/", customPlatform: "" },
-    { id: "social-2", platform: "YouTube", enabled: true, url: "https://youtube.com/", customPlatform: "" },
-    { id: "social-3", platform: "X / Twitter", enabled: true, url: "https://x.com/", customPlatform: "" },
-  ]);
-  const [openSocialDropdownId, setOpenSocialDropdownId] = useState<string | null>(null);
   const [showExitBuilderModal, setShowExitBuilderModal] = useState(false);
   const [isProductSubmitting, setIsProductSubmitting] = useState(false);
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
+  const [isProfileUploading, setIsProfileUploading] = useState(false);
+  const [isCoverUploading, setIsCoverUploading] = useState(false);
+  const [isSelectProductsModalOpen, setIsSelectProductsModalOpen] = useState(false);
+  const [isSocialModalOpen, setIsSocialModalOpen] = useState(false);
+  const [isSocialPlatformMenuOpen, setIsSocialPlatformMenuOpen] = useState(false);
+  const [isSelectSocialModalOpen, setIsSelectSocialModalOpen] = useState(false);
+  const [isSocialSubmitting, setIsSocialSubmitting] = useState(false);
+  const [selectedSavedSocialIds, setSelectedSavedSocialIds] = useState<string[]>([]);
+  const [builderSelectedSocialIds, setBuilderSelectedSocialIds] = useState<string[]>([]);
+  const [builderSocialVisibility, setBuilderSocialVisibility] = useState<Record<string, boolean>>({});
+  const [selectedCatalogProductIds, setSelectedCatalogProductIds] = useState<string[]>([]);
+  const [builderSelectedProductIds, setBuilderSelectedProductIds] = useState<string[]>([]);
   const [productForm, setProductForm] = useState({
     name: "",
     description: "",
@@ -475,6 +507,14 @@ export default function HomeDashboard() {
   });
   const [newProductCategoryName, setNewProductCategoryName] = useState("");
   const [builderProductVisibility, setBuilderProductVisibility] = useState<Record<string, boolean>>({});
+  const [socialForm, setSocialForm] = useState({
+    id: "",
+    platform: "Instagram",
+    accountName: "",
+    customPlatform: "",
+    url: "",
+    useInCardBuilder: true,
+  });
   const queryClient = useQueryClient();
   const toast = useUiStore((state) => state.toast);
   const showToastStore = useUiStore((state) => state.showToast);
@@ -482,12 +522,7 @@ export default function HomeDashboard() {
   const isProductModalOpen = useUiStore((state) => state.isProductModalOpen);
   const setProductModalOpen = useUiStore((state) => state.setProductModalOpen);
 
-  const selectedCard = useMemo(
-    () => createdCards.find((card) => card.id === selectedCardId) ?? null,
-    [selectedCardId],
-  );
-
-  const showRightPane = isBuilderMode || activeTab === "Dashboard" || (activeTab === "My Links" && !!selectedCard);
+  const showRightPane = isBuilderMode || activeTab === "Dashboard" || (activeTab === "My Links" && !!selectedCardId);
   const { data: productsQueryData, isLoading: isCatalogLoading } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
@@ -513,18 +548,92 @@ export default function HomeDashboard() {
     },
   });
   const catalogCategories = categoriesQueryData?.categories ?? [];
+  const { data: socialQueryData } = useQuery({
+    queryKey: ["social-media"],
+    queryFn: async () => {
+      const response = await fetch("/api/social-media", { method: "GET" });
+      const payload = (await response.json().catch(() => ({}))) as { socialLinks?: SavedSocialLink[]; message?: string };
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Could not load social links.");
+      }
+      return payload;
+    },
+  });
+  const savedSocialLinks = socialQueryData?.socialLinks ?? [];
+  const { data: cardsQueryData } = useQuery({
+    queryKey: ["cards"],
+    queryFn: async () => {
+      const response = await fetch("/api/cards", { method: "GET" });
+      const payload = (await response.json().catch(() => ({}))) as {
+        cards?: StoredCard[];
+        handle?: string;
+        shareBaseUrl?: string;
+        message?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Could not load cards.");
+      }
+      return payload;
+    },
+  });
+  const handleSlug = cardsQueryData?.handle ?? "new-creator";
+  const shareBaseUrl = cardsQueryData?.shareBaseUrl ?? "https://links.anshapps.in";
+  const draftHandle = `links.anshapps.in/${handleSlug}`;
+  const createdCards = useMemo<CardItem[]>(
+    () =>
+      (cardsQueryData?.cards ?? []).map((card) => {
+        const enabledLinks = (card.links ?? []).filter((item) => item?.enabled !== false);
+        return {
+          id: card.id,
+          name: card.title,
+          handle: draftHandle,
+          cardSlug: card.cardSlug,
+          shareUrl: `${shareBaseUrl}/${handleSlug}/${card.cardSlug}`,
+          status: card.isLive ? "Live" : "Draft",
+          updatedAt: `Updated ${new Date(card.updatedAt).toLocaleDateString()}`,
+          links: enabledLinks.map((item) => item.label?.trim() || "Untitled link"),
+          cover: card.coverImageUrl || "/image1.svg",
+        };
+      }),
+    [cardsQueryData?.cards, handleSlug, draftHandle, shareBaseUrl],
+  );
+  const selectedCard = useMemo(
+    () => createdCards.find((card) => card.id === selectedCardId) ?? null,
+    [createdCards, selectedCardId],
+  );
+  const { data: coverPresetsQueryData } = useQuery({
+    queryKey: ["cover-presets"],
+    queryFn: async () => {
+      const response = await fetch("/api/cover-presets", { method: "GET" });
+      const payload = (await response.json().catch(() => ({}))) as { presets?: CoverPreset[]; message?: string };
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Could not load cover presets.");
+      }
+      return payload;
+    },
+  });
+  const coverImagePresets = coverPresetsQueryData?.presets ?? [];
 
   const catalogProductsForPreview = useMemo(
     () =>
       catalogProducts
-        .filter((item) => builderProductVisibility[item.id] ?? item.useInLinks)
+        .filter((item) => builderSelectedProductIds.includes(item.id))
+        .filter((item) => builderProductVisibility[item.id] ?? true)
         .map((item) => ({
           category: item.category.name,
           name: item.name,
           price: `${item.currency} ${item.amount.toFixed(2)}`,
           imageUrl: item.imageUrl || "/image1.svg",
         })),
-    [builderProductVisibility, catalogProducts],
+    [builderProductVisibility, builderSelectedProductIds, catalogProducts],
+  );
+  const selectableProducts = useMemo(
+    () => catalogProducts.filter((item) => item.useInLinks),
+    [catalogProducts],
+  );
+  const builderSelectedProducts = useMemo(
+    () => catalogProducts.filter((item) => builderSelectedProductIds.includes(item.id)),
+    [builderSelectedProductIds, catalogProducts],
   );
   const rightPaneMode: "dashboard" | "my-links" | "builder" | null = isBuilderMode
     ? "builder"
@@ -543,6 +652,14 @@ export default function HomeDashboard() {
     setTimeout(() => {
       clearToast();
     }, 3000);
+  };
+  const handleShareCard = async (shareUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("success", "Share link copied.");
+    } catch {
+      showToast("error", "Could not copy share link.");
+    }
   };
 
   const createProductMutation = useMutation({
@@ -577,6 +694,85 @@ export default function HomeDashboard() {
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
   });
+  const createCardMutation = useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      bio: string;
+      profileImageUrl: string;
+      coverImageUrl: string;
+      designId: string;
+      defaultThemeId: string;
+      showProfilePhoto: boolean;
+      showAvatarBadge: boolean;
+      showBio: boolean;
+      showSocialChips: boolean;
+      aboutWhatIDo: string;
+      aboutInterests: string[];
+      aboutEducation: string;
+      aboutLocation: string;
+      links: CardLinkRow[];
+      selectedProductIds: string[];
+      productVisibility: Record<string, boolean>;
+      selectedSocialIds: string[];
+      socialVisibility: Record<string, boolean>;
+      settings: typeof cardSettings;
+      isLive: boolean;
+    }) => {
+      const response = await fetch("/api/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const payloadJson = (await response.json().catch(() => ({}))) as { card?: { id: string }; message?: string };
+      if (!response.ok || !payloadJson.card) {
+        throw new Error(payloadJson.message ?? "Could not create card.");
+      }
+      return payloadJson;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+  const handleSaveCard = async (isLive: boolean) => {
+    try {
+      const response = await createCardMutation.mutateAsync({
+        title: draftTitle,
+        bio: draftBio,
+        profileImageUrl,
+        coverImageUrl,
+        designId: draftDesignId,
+        defaultThemeId,
+        showProfilePhoto,
+        showAvatarBadge,
+        showBio,
+        showSocialChips,
+        aboutWhatIDo,
+        aboutInterests: aboutInterestsInput
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        aboutEducation,
+        aboutLocation,
+        links: draftLinkRows,
+        selectedProductIds: builderSelectedProductIds,
+        productVisibility: builderProductVisibility,
+        selectedSocialIds: builderSelectedSocialIds,
+        socialVisibility: builderSocialVisibility,
+        settings: cardSettings,
+        isLive,
+      });
+      if (!response.card?.id) {
+        throw new Error("Card was created but response is incomplete.");
+      }
+      showToast("success", isLive ? "Card saved and set live." : "Card saved as draft.");
+      setIsBuilderMode(false);
+      setBuilderSection("Links");
+      setSelectedCardId(response.card.id);
+      setActiveTab("My Links");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not save card.");
+    }
+  };
 
   const createCategoryMutation = useMutation({
     mutationFn: async (payload: { name: string }) => {
@@ -596,6 +792,34 @@ export default function HomeDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["product-categories"] });
+    },
+  });
+  const createSocialMutation = useMutation({
+    mutationFn: async (payload: {
+      id?: string;
+      platform: string;
+      accountName: string;
+      customPlatform: string;
+      url: string;
+      useInCardBuilder: boolean;
+    }) => {
+      const isUpdate = Boolean(payload.id);
+      const response = await fetch("/api/social-media", {
+        method: isUpdate ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responseBody = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        socialLink?: SavedSocialLink;
+      };
+      if (!response.ok) {
+        throw new Error(responseBody.message ?? "Could not save social media.");
+      }
+      return responseBody;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["social-media"] });
     },
   });
 
@@ -676,6 +900,65 @@ export default function HomeDashboard() {
     }
   };
 
+  const handleAddSelectedProductsToBuilder = () => {
+    setBuilderSelectedProductIds((prev) => Array.from(new Set([...prev, ...selectedCatalogProductIds])));
+    setSelectedCatalogProductIds([]);
+    setIsSelectProductsModalOpen(false);
+    showToast("success", "Selected products added to your list.");
+  };
+
+  const handleSaveSocial = async () => {
+    const platform = socialForm.platform.trim();
+    const url = socialForm.url.trim();
+    if (!platform) {
+      showToast("error", "Please select a platform.");
+      return;
+    }
+    if (platform === "Other" && !socialForm.customPlatform.trim()) {
+      showToast("error", "Please add custom platform name.");
+      return;
+    }
+    if (!url) {
+      showToast("error", "Please add social profile link.");
+      return;
+    }
+    try {
+      setIsSocialSubmitting(true);
+      const result = await createSocialMutation.mutateAsync({
+        id: socialForm.id || undefined,
+        platform,
+        accountName: socialForm.accountName.trim(),
+        customPlatform: socialForm.customPlatform.trim(),
+        url,
+        useInCardBuilder: socialForm.useInCardBuilder,
+      });
+      if (result.socialLink?.useInCardBuilder) {
+        setBuilderSelectedSocialIds((prev) => Array.from(new Set([...prev, result.socialLink!.id])));
+      }
+      setSocialForm({
+        id: "",
+        platform: "Instagram",
+        accountName: "",
+        customPlatform: "",
+        url: "",
+        useInCardBuilder: true,
+      });
+      setIsSocialModalOpen(false);
+      showToast("success", "Social media saved.");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Could not save social media.");
+    } finally {
+      setIsSocialSubmitting(false);
+    }
+  };
+
+  const handleAddSelectedSocialsToBuilder = () => {
+    setBuilderSelectedSocialIds((prev) => Array.from(new Set([...prev, ...selectedSavedSocialIds])));
+    setSelectedSavedSocialIds([]);
+    setIsSelectSocialModalOpen(false);
+    showToast("success", "Selected social media added to your list.");
+  };
+
   const handleLogout = async () => {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
@@ -703,14 +986,39 @@ export default function HomeDashboard() {
   }, [selectedDefaultTheme, selectedDesign]);
   const enabledProductsForPreview = useMemo(() => [...catalogProductsForPreview], [catalogProductsForPreview]);
 
-  const handleImageUpload = (
+  const handleImageUpload = async (
     event: ChangeEvent<HTMLInputElement>,
+    mediaType: "profile" | "cover",
     setUrl: React.Dispatch<React.SetStateAction<string>>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const localUrl = URL.createObjectURL(file);
-    setUrl(localUrl);
+    try {
+      if (mediaType === "profile") setIsProfileUploading(true);
+      if (mediaType === "cover") setIsCoverUploading(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mediaType", mediaType);
+      formData.append("cardId", selectedCardId || "draft");
+
+      const response = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; url?: string };
+
+      if (!response.ok || !payload.url) {
+        showToast("error", payload.message ?? "Could not upload image.");
+        return;
+      }
+
+      setUrl(payload.url);
+      showToast("success", `${mediaType === "profile" ? "Profile" : "Cover"} image uploaded.`);
+    } finally {
+      if (mediaType === "profile") setIsProfileUploading(false);
+      if (mediaType === "cover") setIsCoverUploading(false);
+    }
   };
 
   const ProductCarousel = ({ products, idPrefix }: { products: PreviewProduct[]; idPrefix: string }) => {
@@ -758,7 +1066,16 @@ export default function HomeDashboard() {
   };
 
   const enabledLinks = draftLinkRows.filter((item) => item.enabled);
-  const enabledSocials = draftSocialRows.filter((row) => row.enabled);
+  const enabledSocials = savedSocialLinks
+    .filter((row) => builderSelectedSocialIds.includes(row.id))
+    .filter((row) => builderSocialVisibility[row.id] ?? true)
+    .map((row) => ({
+      id: row.id,
+      platform: row.platform,
+      enabled: true,
+      url: row.url,
+      customPlatform: row.customPlatform ?? "",
+    }));
   const aboutInterests = aboutInterestsInput
     .split(",")
     .map((tag) => tag.trim())
@@ -1182,31 +1499,52 @@ export default function HomeDashboard() {
         >
           {isBuilderMode ? (
             <>
-              <header>
-                <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">Card Builder</p>
-                <h1 className="mt-3 text-[2.6rem] font-semibold leading-[0.95] tracking-tight">Edit Your New Card</h1>
-                <p className="mt-2 max-w-[620px] text-white/56">
-                  Make changes in this editor. Live preview updates instantly on the right side.
-                </p>
+              <header className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">Card Builder</p>
+                  <h1 className="mt-3 text-[2.6rem] font-semibold leading-[0.95] tracking-tight">Edit Your New Card</h1>
+                  <p className="mt-2 max-w-[620px] text-white/56">
+                    Make changes in this editor. Live preview updates instantly on the right side.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveCard(false)}
+                    disabled={createCardMutation.isPending}
+                    className="rounded-lg border border-white/20 bg-[#1a2134] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#222b43] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {createCardMutation.isPending ? "Saving..." : "Save Draft"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveCard(true)}
+                    disabled={createCardMutation.isPending}
+                    className="rounded-lg bg-gradient-to-r from-[#b781ff] to-[#23deff] px-4 py-2.5 text-sm font-bold text-[#0d1120] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {createCardMutation.isPending ? "Saving..." : "Save Card"}
+                  </button>
+                </div>
               </header>
 
               {builderSection === "Links" ? (
                 <div className="mt-8 rounded-xl border border-white/10 bg-[#0f1321] p-5">
                   <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Profile Info</p>
-                  <div className="mt-4 grid gap-4">
+                  <div className="mt-4 rounded-lg border border-white/10 bg-[#0c101a] p-4">
+                    <div className="grid gap-4">
+                    <label className="block">
+                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Handle</span>
+                      <input
+                        value={draftHandle}
+                        readOnly
+                        className="mt-2 w-full cursor-not-allowed rounded-md border border-white/12 bg-[#0e1320] px-3 py-2.5 text-white/80 outline-none"
+                      />
+                    </label>
                     <label className="block">
                       <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Card title</span>
                       <input
                         value={draftTitle}
                         onChange={(e) => setDraftTitle(e.target.value)}
-                        className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Handle</span>
-                      <input
-                        value={draftHandle}
-                        onChange={(e) => setDraftHandle(e.target.value)}
                         className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
                       />
                     </label>
@@ -1219,138 +1557,161 @@ export default function HomeDashboard() {
                         className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
                       />
                     </label>
-                    <label className="block">
-                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Profile photo URL</span>
-                      <input
-                        value={profileImageUrl}
-                        onChange={(e) => setProfileImageUrl(e.target.value)}
-                        className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
-                      />
-                      <div className="mt-2">
-                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-xs font-semibold text-white/80 transition hover:text-white">
-                          <span>Upload Profile Pic</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => handleImageUpload(e, setProfileImageUrl)}
-                          />
-                        </label>
-                      </div>
-                    </label>
-                    <label className="block">
-                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Avatar image URL</span>
-                      <input
-                        value={avatarImageUrl}
-                        onChange={(e) => setAvatarImageUrl(e.target.value)}
-                        className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Cover image URL</span>
-                      <input
-                        value={coverImageUrl}
-                        onChange={(e) => setCoverImageUrl(e.target.value)}
-                        className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
-                      />
-                      <div className="mt-2">
-                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-xs font-semibold text-white/80 transition hover:text-white">
-                          <span>Upload Cover Image</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => handleImageUpload(e, setCoverImageUrl)}
-                          />
-                        </label>
-                      </div>
-                    </label>
+                    </div>
                   </div>
 
-                  <p className="mt-6 text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Card Elements</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {[
-                      { label: "Profile Photo", enabled: showProfilePhoto, setEnabled: setShowProfilePhoto },
-                      { label: "Avatar Badge", enabled: showAvatarBadge, setEnabled: setShowAvatarBadge },
-                      { label: "Bio", enabled: showBio, setEnabled: setShowBio },
-                      { label: "Social Chips", enabled: showSocialChips, setEnabled: setShowSocialChips },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => item.setEnabled(!item.enabled)}
-                        className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
-                          item.enabled
-                            ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                            : "border-white/12 bg-[#0c101a] text-white/60"
-                        }`}
-                      >
-                        <span>{item.label}</span>
-                        <span className="text-xs font-bold uppercase">{item.enabled ? "On" : "Off"}</span>
-                      </button>
-                    ))}
+                  <div className="mt-6 rounded-lg border border-white/10 bg-[#0c101a] p-4">
+                    <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Photos & Cover</p>
+                    <div className="mt-3 grid gap-4">
+                      <label className="block">
+                        <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Profile photo URL</span>
+                        <input
+                          value={profileImageUrl}
+                          onChange={(e) => setProfileImageUrl(e.target.value)}
+                          className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
+                        />
+                        <div className="mt-2">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-xs font-semibold text-white/80 transition hover:text-white">
+                            <span>Upload Profile Pic</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleImageUpload(e, "profile", setProfileImageUrl)}
+                            />
+                          </label>
+                          {isProfileUploading ? <span className="ml-2 text-xs text-cyan-200/80">Uploading...</span> : null}
+                        </div>
+                      </label>
+                      <label className="block">
+                        <span className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-white/50">Cover image URL</span>
+                        <input
+                          value={coverImageUrl}
+                          onChange={(e) => setCoverImageUrl(e.target.value)}
+                          className="mt-2 w-full rounded-md border border-white/12 bg-[#0c101a] px-3 py-2.5 text-white outline-none focus:border-cyan-300/45"
+                        />
+                        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                          {coverImagePresets.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => setCoverImageUrl(preset.imageUrl)}
+                              className={`overflow-hidden rounded-md border text-left transition ${
+                                coverImageUrl === preset.imageUrl ? "border-cyan-300/45" : "border-white/12 hover:border-white/25"
+                              }`}
+                            >
+                              <div className="h-14 bg-cover bg-center" style={{ backgroundImage: `url('${preset.imageUrl}')` }} />
+                              <div className="bg-[#101524] px-2 py-1 text-[0.62rem] font-semibold text-white/75">{preset.label}</div>
+                            </button>
+                          ))}
+                        </div>
+                        {!coverImagePresets.length ? (
+                          <p className="mt-2 text-xs text-white/45">No backend cover presets found in bucket.</p>
+                        ) : null}
+                        <div className="mt-2">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-xs font-semibold text-white/80 transition hover:text-white">
+                            <span>Upload Cover Image</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleImageUpload(e, "cover", setCoverImageUrl)}
+                            />
+                          </label>
+                          {isCoverUploading ? <span className="ml-2 text-xs text-cyan-200/80">Uploading...</span> : null}
+                        </div>
+                      </label>
+                    </div>
                   </div>
 
-                  <p className="mt-6 text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Quick Links</p>
-                  <div className="mt-3 space-y-3">
-                    {draftLinkRows.map((row) => (
-                      <div key={row.id} className="grid gap-2 rounded-lg border border-white/10 bg-[#0c101a] p-3 sm:grid-cols-[96px_1fr_1fr]">
+                  <div className="mt-6 rounded-lg border border-white/10 bg-[#0c101a] p-4">
+                    <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Card Elements</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {[
+                        { label: "Profile Photo", enabled: showProfilePhoto, setEnabled: setShowProfilePhoto },
+                        { label: "Avatar Badge", enabled: showAvatarBadge, setEnabled: setShowAvatarBadge },
+                        { label: "Bio", enabled: showBio, setEnabled: setShowBio },
+                        { label: "Social Chips", enabled: showSocialChips, setEnabled: setShowSocialChips },
+                      ].map((item) => (
                         <button
+                          key={item.label}
                           type="button"
-                          onClick={() =>
-                            setDraftLinkRows((prev) =>
-                              prev.map((item) => (item.id === row.id ? { ...item, enabled: !item.enabled } : item)),
-                            )
-                          }
-                          className={`rounded-md border px-2.5 py-2 text-xs font-bold uppercase tracking-[0.1em] transition ${
-                            row.enabled
+                          onClick={() => item.setEnabled(!item.enabled)}
+                          className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm transition ${
+                            item.enabled
                               ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                              : "border-white/15 bg-white/[0.03] text-white/45"
+                              : "border-white/12 bg-[#0c101a] text-white/60"
                           }`}
                         >
-                          {row.enabled ? "On" : "Off"}
+                          <span>{item.label}</span>
+                          <span className="text-xs font-bold uppercase">{item.enabled ? "On" : "Off"}</span>
                         </button>
-                        <input
-                          value={row.label}
-                          onChange={(e) =>
-                            setDraftLinkRows((prev) =>
-                              prev.map((item) => (item.id === row.id ? { ...item, label: e.target.value } : item)),
-                            )
-                          }
-                          placeholder="Link label"
-                          className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                        />
-                        <input
-                          value={row.url}
-                          onChange={(e) =>
-                            setDraftLinkRows((prev) =>
-                              prev.map((item) => (item.id === row.id ? { ...item, url: e.target.value } : item)),
-                            )
-                          }
-                          placeholder="Paste URL"
-                          className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                        />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraftLinkRows((prev) => [
-                        ...prev,
-                        {
-                          id: `link-${prev.length + 1}`,
-                          label: `New Link ${prev.length + 1}`,
-                          url: "",
-                          enabled: true,
-                        },
-                      ])
-                    }
-                    className="mt-4 rounded-md border border-dashed border-white/20 bg-white/[0.02] px-3.5 py-2 text-sm font-semibold text-white/75 transition hover:text-white"
-                  >
-                    + Add Link
-                  </button>
+                  <div className="mt-6 rounded-lg border border-white/10 bg-[#0c101a] p-4">
+                    <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Quick Links</p>
+                    <div className="mt-3 space-y-3">
+                      {draftLinkRows.map((row) => (
+                        <div key={row.id} className="grid gap-2 rounded-lg border border-white/10 bg-[#0c101a] p-3 sm:grid-cols-[96px_1fr_1fr]">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDraftLinkRows((prev) =>
+                                prev.map((item) => (item.id === row.id ? { ...item, enabled: !item.enabled } : item)),
+                              )
+                            }
+                            className={`rounded-md border px-2.5 py-2 text-xs font-bold uppercase tracking-[0.1em] transition ${
+                              row.enabled
+                                ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                                : "border-white/15 bg-white/[0.03] text-white/45"
+                            }`}
+                          >
+                            {row.enabled ? "On" : "Off"}
+                          </button>
+                          <input
+                            value={row.label}
+                            onChange={(e) =>
+                              setDraftLinkRows((prev) =>
+                                prev.map((item) => (item.id === row.id ? { ...item, label: e.target.value } : item)),
+                              )
+                            }
+                            placeholder="Link label"
+                            className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
+                          />
+                          <input
+                            value={row.url}
+                            onChange={(e) =>
+                              setDraftLinkRows((prev) =>
+                                prev.map((item) => (item.id === row.id ? { ...item, url: e.target.value } : item)),
+                              )
+                            }
+                            placeholder="Paste URL"
+                            className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftLinkRows((prev) => [
+                          ...prev,
+                          {
+                            id: `link-${prev.length + 1}`,
+                            label: `New Link ${prev.length + 1}`,
+                            url: "",
+                            enabled: true,
+                          },
+                        ])
+                      }
+                      className="mt-4 rounded-md border border-dashed border-white/20 bg-white/[0.02] px-3.5 py-2 text-sm font-semibold text-white/75 transition hover:text-white"
+                    >
+                      + Add Link
+                    </button>
+                  </div>
                 </div>
               ) : builderSection === "Products" ? (
                 <div className="mt-8 rounded-xl border border-white/10 bg-[#0f1321] p-5">
@@ -1358,7 +1719,15 @@ export default function HomeDashboard() {
                   <p className="mt-2 text-xs text-white/55">
                     Select existing products and toggle which ones should appear in your live preview.
                   </p>
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsSelectProductsModalOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/[0.08]"
+                    >
+                      <FaCheck className="h-3.5 w-3.5" />
+                      Select Product
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1376,13 +1745,13 @@ export default function HomeDashboard() {
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {!catalogProducts.length ? (
+                    {!builderSelectedProducts.length ? (
                       <div className="rounded-lg border border-white/10 bg-[#0c101a] p-4 text-sm text-white/55">
-                        No products available. Use <span className="font-semibold text-white/80">Create Product</span> to add one.
+                        No products in your list. Use <span className="font-semibold text-white/80">Select Product</span> to add from catalog.
                       </div>
                     ) : null}
-                    {catalogProducts.map((product) => {
-                      const enabled = builderProductVisibility[product.id] ?? product.useInLinks;
+                    {builderSelectedProducts.map((product) => {
+                      const enabled = builderProductVisibility[product.id] ?? true;
                       return (
                         <div key={`builder-catalog-product-${product.id}`} className="rounded-lg border border-white/10 bg-[#0c101a] p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -1543,114 +1912,74 @@ export default function HomeDashboard() {
               ) : builderSection === "Social Media" ? (
                 <div className="mt-8 rounded-xl border border-white/10 bg-[#0f1321] p-5">
                   <p className="text-[0.7rem] font-bold uppercase tracking-[0.12em] text-[#21ddff]">Social Media</p>
-                  <p className="mt-2 text-xs text-white/55">Enable socials you want to show on your card, then paste profile links.</p>
-                  <div className="mt-4 space-y-3">
-                    {draftSocialRows.map((row) => (
-                      <div key={row.id} className="grid gap-2 rounded-lg border border-white/10 bg-[#0c101a] p-3 sm:grid-cols-[170px_92px_1fr]">
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setOpenSocialDropdownId((prev) => (prev === row.id ? null : row.id))}
-                            className="flex w-full items-center justify-between rounded-md border border-white/12 bg-[#111726] px-2.5 py-2 text-sm text-white outline-none transition hover:border-cyan-300/35"
-                          >
-                            <span className="flex items-center gap-2.5">
-                              {(() => {
-                                const selectedOption = getSocialOption(row.platform);
-                                return <selectedOption.Icon className="text-cyan-200/90" />;
-                              })()}
-                              <span>{row.platform}</span>
-                            </span>
-                            <FaChevronDown className="text-xs text-white/65" />
-                          </button>
-
-                          {openSocialDropdownId === row.id ? (
-                            <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-full overflow-hidden rounded-md border border-white/12 bg-[#0f1524] shadow-[0_14px_34px_rgba(0,0,0,0.4)]">
-                              {socialPlatformOptions.map((platform) => (
-                                <button
-                                  key={`${row.id}-${platform.label}`}
-                                  type="button"
-                                  onClick={() => {
-                                    setDraftSocialRows((prev) =>
-                                      prev.map((item) => (item.id === row.id ? { ...item, platform: platform.label } : item)),
-                                    );
-                                    setOpenSocialDropdownId(null);
-                                  }}
-                                  className={`flex w-full items-center justify-between px-2.5 py-2 text-left text-sm transition ${
-                                    row.platform === platform.label ? "bg-cyan-400/20 text-white" : "text-white/86 hover:bg-white/7"
-                                  }`}
-                                >
-                                  <span className="flex items-center gap-2.5">
-                                    <platform.Icon className="text-cyan-200/90" />
-                                    <span>{platform.label}</span>
-                                  </span>
-                                  {row.platform === platform.label ? <FaCheck className="text-xs text-cyan-200" /> : null}
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDraftSocialRows((prev) =>
-                              prev.map((item) => (item.id === row.id ? { ...item, enabled: !item.enabled } : item)),
-                            )
-                          }
-                          className={`rounded-md border px-2.5 py-2 text-xs font-bold uppercase tracking-[0.1em] transition ${
-                            row.enabled
-                              ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
-                              : "border-white/15 bg-white/[0.03] text-white/45"
-                          }`}
-                        >
-                          {row.enabled ? "On" : "Off"}
-                        </button>
-
-                        <input
-                          value={row.url}
-                          onChange={(e) =>
-                            setDraftSocialRows((prev) =>
-                              prev.map((item) => (item.id === row.id ? { ...item, url: e.target.value } : item)),
-                            )
-                          }
-                          placeholder={`Paste ${row.platform} link`}
-                          className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
-                        />
-
-                        {row.platform === "Other" ? (
-                          <input
-                            value={row.customPlatform}
-                            onChange={(e) =>
-                              setDraftSocialRows((prev) =>
-                                prev.map((item) => (item.id === row.id ? { ...item, customPlatform: e.target.value } : item)),
-                              )
-                            }
-                            placeholder="Enter platform name"
-                            className="rounded-md border border-white/12 bg-[#111726] px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45 sm:col-span-3"
-                          />
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraftSocialRows((prev) => [
-                        ...prev,
-                        {
-                          id: `social-${prev.length + 1}`,
+                  <p className="mt-2 text-xs text-white/55">Select saved social media and toggle what you want to show in card preview.</p>
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsSelectSocialModalOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/[0.08]"
+                    >
+                      <FaCheck className="h-3.5 w-3.5" />
+                      Select Social Media
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSocialForm({
+                          id: "",
                           platform: "Instagram",
-                          enabled: false,
-                          url: "",
+                          accountName: "",
                           customPlatform: "",
-                        },
-                      ])
-                    }
-                    className="mt-4 rounded-md border border-dashed border-white/20 bg-white/[0.02] px-3.5 py-2 text-sm font-semibold text-white/75 transition hover:text-white"
-                  >
-                    + Add Link
-                  </button>
+                          url: "",
+                          useInCardBuilder: true,
+                        });
+                        setIsSocialModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-md border border-cyan-300/35 bg-gradient-to-r from-[#27355a] to-[#124054] px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                    >
+                      <FaPlus className="h-3.5 w-3.5" />
+                      Add Social Media
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {!builderSelectedSocialIds.length ? (
+                      <div className="rounded-lg border border-white/10 bg-[#0c101a] p-4 text-sm text-white/55">
+                        No social media in your list. Use <span className="font-semibold text-white/80">Select Social Media</span> to add.
+                      </div>
+                    ) : null}
+                    {savedSocialLinks
+                      .filter((item) => builderSelectedSocialIds.includes(item.id))
+                      .map((item) => {
+                        const enabled = builderSocialVisibility[item.id] ?? true;
+                        const displayName = item.platform === "Other" ? item.customPlatform || "Other" : item.platform;
+                        return (
+                          <div key={`builder-social-${item.id}`} className="rounded-lg border border-white/10 bg-[#0c101a] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-white">{displayName}</p>
+                                <p className="mt-1 truncate text-xs text-white/55">{item.url}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setBuilderSocialVisibility((prev) => ({
+                                    ...prev,
+                                    [item.id]: !(prev[item.id] ?? true),
+                                  }))
+                                }
+                                className={`rounded-md border px-2.5 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
+                                  enabled
+                                    ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                                    : "border-white/15 bg-white/[0.03] text-white/45"
+                                }`}
+                              >
+                                {enabled ? "On" : "Off"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
               ) : builderSection === "Design" ? (
                 <div className="mt-8 rounded-xl border border-white/10 bg-[#0f1321] p-5">
@@ -1884,6 +2213,17 @@ export default function HomeDashboard() {
                         <div className="mt-3 flex items-center gap-2 text-xs text-white/80">
                           <span className="rounded-md bg-white/10 px-2 py-1">{card.links.length} links</span>
                           <span className="text-white/55">Click to preview</span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleShareCard(card.shareUrl);
+                            }}
+                            className="ml-auto inline-flex items-center gap-1 rounded-md border border-cyan-300/35 bg-cyan-300/12 px-2 py-1 text-[0.68rem] font-semibold text-cyan-100 transition hover:bg-cyan-300/20"
+                          >
+                            <FaShareNodes className="h-3 w-3" />
+                            Share
+                          </button>
                         </div>
                       </div>
                     </button>
@@ -1955,6 +2295,84 @@ export default function HomeDashboard() {
                 </div>
               </div>
             </>
+          ) : activeTab === "Social Media" ? (
+            <>
+              <header className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">Social Media</p>
+                  <h1 className="mt-3 text-[2.6rem] font-semibold leading-[0.95] tracking-tight">Social Profiles</h1>
+                  <p className="mt-2 max-w-[620px] text-white/56">
+                    Save your social media links here and choose which ones are available inside card builder.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSocialForm({
+                      id: "",
+                      platform: "Instagram",
+                      accountName: "",
+                      customPlatform: "",
+                      url: "",
+                      useInCardBuilder: true,
+                    });
+                    setIsSocialModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-cyan-300/35 bg-gradient-to-r from-[#27355a] to-[#124054] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  <FaPlus className="h-3.5 w-3.5" />
+                  Add Social Media
+                </button>
+              </header>
+
+              <div className="mt-8">
+                {!savedSocialLinks.length ? (
+                  <div className="rounded-xl border border-white/10 bg-[#0f1321] p-6 text-sm text-white/60">
+                    No social links yet. Click <span className="font-semibold text-white/85">Add Social Media</span> to create your first one.
+                  </div>
+                ) : null}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {savedSocialLinks.map((item) => {
+                    const displayName = item.platform === "Other" ? item.customPlatform || "Other" : item.platform;
+                    const SocialIcon = getSocialOption(item.platform).Icon;
+                    return (
+                      <button
+                        key={`social-item-${item.id}`}
+                        type="button"
+                        onClick={() => {
+                          setSocialForm({
+                            id: item.id,
+                            platform: item.platform,
+                            accountName: item.accountName ?? "",
+                            customPlatform: item.customPlatform ?? "",
+                            url: item.url,
+                            useInCardBuilder: item.useInCardBuilder,
+                          });
+                          setIsSocialModalOpen(true);
+                        }}
+                        className="rounded-xl border border-white/10 bg-[#101526] p-4 text-left transition hover:border-white/25"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">{displayName}</p>
+                            <p className="mt-1 truncate text-xs text-white/60">{item.accountName || "No account name"}</p>
+                            <p className="mt-2 truncate text-xs text-white/55">{item.url}</p>
+                          </div>
+                          <SocialIcon className="h-9 w-9 shrink-0 text-cyan-200/85" />
+                        </div>
+                        <span
+                          className={`mt-3 inline-flex rounded-md border px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] ${
+                            item.useInCardBuilder ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/15 text-white/45"
+                          }`}
+                        >
+                          {item.useInCardBuilder ? "Builder Enabled" : "Hidden in Builder"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           ) : (
             <div className="rounded-xl border border-white/10 bg-[#0f1321] p-6">
               <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#21ddff]">{activeTab}</p>
@@ -2013,9 +2431,7 @@ export default function HomeDashboard() {
                     suggestions,
                     settings: cardSettings,
                     links: draftLinkRows.filter((item) => item.enabled).map((item) => ({ label: item.label, url: item.url })),
-                    socials: draftSocialRows
-                      .filter((row) => row.enabled)
-                      .map((row) => ({ platform: row.platform, customPlatform: row.customPlatform })),
+                    socials: enabledSocials.map((row) => ({ platform: row.platform, customPlatform: row.customPlatform })),
                     products: enabledProductsForPreview,
                     design: resolvedDesign,
                   })
@@ -2371,6 +2787,293 @@ export default function HomeDashboard() {
                 className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110 disabled:opacity-70"
               >
                 {isProductSubmitting ? "Saving..." : "Save Product"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isSelectProductsModalOpen ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl border border-cyan-300/25 bg-[#0d1220] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#22deff]">Select Products</p>
+                <h3 className="mt-1 text-2xl font-semibold text-white">Add products to builder list</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSelectProductsModalOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-white/[0.02] text-white/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Close select products modal"
+              >
+                <FaXmark className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm text-white/60">Only products with useInLinks enabled are shown here.</p>
+            <div className="mt-4 max-h-[340px] space-y-2 overflow-y-auto pr-1">
+              {!selectableProducts.length ? (
+                <div className="rounded-md border border-white/10 bg-[#0f1424] p-4 text-sm text-white/55">
+                  No eligible products found. Create product with use in links enabled.
+                </div>
+              ) : null}
+              {selectableProducts.map((product) => {
+                const isSelected = selectedCatalogProductIds.includes(product.id);
+                return (
+                  <button
+                    key={`select-product-${product.id}`}
+                    type="button"
+                    onClick={() =>
+                      setSelectedCatalogProductIds((prev) =>
+                        prev.includes(product.id) ? prev.filter((id) => id !== product.id) : [...prev, product.id],
+                      )
+                    }
+                    className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left transition ${
+                      isSelected
+                        ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                        : "border-white/12 bg-[#0f1424] text-white/80"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{product.name}</p>
+                      <p className="mt-0.5 text-xs text-white/55">{product.category.name}</p>
+                    </div>
+                    <span className="text-xs font-bold uppercase">{isSelected ? "Selected" : "Select"}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSelectProductsModalOpen(false)}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSelectedProductsToBuilder}
+                disabled={!selectedCatalogProductIds.length}
+                className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110 disabled:opacity-60"
+              >
+                Add to my list
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isSocialModalOpen ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-cyan-300/25 bg-[#0d1220] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#22deff]">Social Media</p>
+                <h3 className="mt-1 text-2xl font-semibold text-white">{socialForm.id ? "Edit social media" : "Add social media"}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSocialModalOpen(false);
+                  setIsSocialPlatformMenuOpen(false);
+                }}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-white/[0.02] text-white/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Close social media modal"
+              >
+                <FaXmark className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Social Media</span>
+                <div className="relative mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSocialPlatformMenuOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none transition hover:border-cyan-300/35"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      {(() => {
+                        const selected = getSocialOption(socialForm.platform);
+                        return <selected.Icon className="text-cyan-200/90" />;
+                      })()}
+                      <span>{socialForm.platform}</span>
+                    </span>
+                    <FaChevronDown className="text-xs text-white/65" />
+                  </button>
+                  {isSocialPlatformMenuOpen ? (
+                    <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-full overflow-hidden rounded-md border border-white/12 bg-[#0f1524] shadow-[0_14px_34px_rgba(0,0,0,0.4)]">
+                      {socialPlatformOptions.map((platform) => (
+                        <button
+                          key={`modal-social-platform-${platform.label}`}
+                          type="button"
+                          onClick={() => {
+                            setSocialForm((prev) => ({ ...prev, platform: platform.label }));
+                            setIsSocialPlatformMenuOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between px-2.5 py-2 text-left text-sm transition ${
+                            socialForm.platform === platform.label ? "bg-cyan-400/20 text-white" : "text-white/86 hover:bg-white/7"
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <platform.Icon className="text-cyan-200/90" />
+                            <span>{platform.label}</span>
+                          </span>
+                          {socialForm.platform === platform.label ? <FaCheck className="text-xs text-cyan-200" /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Account Name</span>
+                <input
+                  value={socialForm.accountName}
+                  onChange={(event) => setSocialForm((prev) => ({ ...prev, accountName: event.target.value }))}
+                  placeholder="@username or page name"
+                  className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                />
+              </label>
+
+              {socialForm.platform === "Other" ? (
+                <label className="block">
+                  <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Other Platform Name</span>
+                  <input
+                    value={socialForm.customPlatform}
+                    onChange={(event) => setSocialForm((prev) => ({ ...prev, customPlatform: event.target.value }))}
+                    placeholder="Enter platform name"
+                    className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                  />
+                </label>
+              ) : null}
+
+              <label className="block">
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/60">Link</span>
+                <input
+                  value={socialForm.url}
+                  onChange={(event) => setSocialForm((prev) => ({ ...prev, url: event.target.value }))}
+                  placeholder="https://"
+                  className="mt-2 w-full rounded-md border border-white/12 bg-[#0f1424] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/45"
+                />
+              </label>
+
+              <div className="flex items-center justify-between rounded-md border border-white/10 bg-[#0f1424] px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-semibold text-white/90">Use in Card Builder</p>
+                  <p className="text-xs text-white/50">Allow this social to appear in builder selection list.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSocialForm((prev) => ({ ...prev, useInCardBuilder: !prev.useInCardBuilder }))}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.1em] transition ${
+                    socialForm.useInCardBuilder ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100" : "border-white/20 text-white/55"
+                  }`}
+                >
+                  {socialForm.useInCardBuilder ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSocialModalOpen(false);
+                  setIsSocialPlatformMenuOpen(false);
+                }}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSocial}
+                disabled={isSocialSubmitting}
+                className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110 disabled:opacity-60"
+              >
+                {isSocialSubmitting ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isSelectSocialModalOpen ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl border border-cyan-300/25 bg-[#0d1220] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.16em] text-[#22deff]">Select Social Media</p>
+                <h3 className="mt-1 text-2xl font-semibold text-white">Add socials to builder list</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSelectSocialModalOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-white/[0.02] text-white/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Close select social modal"
+              >
+                <FaXmark className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm text-white/60">Only social links with use in card builder enabled are shown here.</p>
+            <div className="mt-4 max-h-[340px] space-y-2 overflow-y-auto pr-1">
+              {savedSocialLinks.filter((item) => item.useInCardBuilder).length === 0 ? (
+                <div className="rounded-md border border-white/10 bg-[#0f1424] p-4 text-sm text-white/55">
+                  No eligible social media found. Add social with use in card builder enabled.
+                </div>
+              ) : null}
+              {savedSocialLinks
+                .filter((item) => item.useInCardBuilder)
+                .map((item) => {
+                  const displayName = item.platform === "Other" ? item.customPlatform || "Other" : item.platform;
+                  const isSelected = selectedSavedSocialIds.includes(item.id);
+                  return (
+                    <button
+                      key={`select-social-${item.id}`}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSavedSocialIds((prev) =>
+                          prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id],
+                        )
+                      }
+                      className={`flex w-full items-center justify-between rounded-md border px-3 py-2.5 text-left transition ${
+                        isSelected
+                          ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                          : "border-white/12 bg-[#0f1424] text-white/80"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{displayName}</p>
+                        <p className="mt-0.5 truncate text-xs text-white/55">{item.url}</p>
+                      </div>
+                      <span className="text-xs font-bold uppercase">{isSelected ? "Selected" : "Select"}</span>
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSelectSocialModalOpen(false)}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSelectedSocialsToBuilder}
+                disabled={!selectedSavedSocialIds.length}
+                className="rounded-full bg-gradient-to-r from-[#b983ff] to-[#22deff] px-5 py-2 text-sm font-bold text-[#08101c] transition hover:brightness-110 disabled:opacity-60"
+              >
+                Add Social Media
               </button>
             </div>
           </div>

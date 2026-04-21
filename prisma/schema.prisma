@@ -28,8 +28,47 @@ model User {
   updatedAt     DateTime @updatedAt
   products      Product[]
   categories    ProductCategory[]
+  socialLinks   SocialLink[]
+  cards         Card[]
 
   @@map("users")
+}
+
+model Card {
+  id                 String   @id @default(cuid())
+  userId             String
+  workspaceId        Int
+  cardSlug           String
+  isLive             Boolean  @default(false)
+  title              String
+  bio                String?
+  profileImageUrl    String?
+  coverImageUrl      String?
+  designId           String   @default("default")
+  defaultThemeId     String   @default("aurora")
+  status             String   @default("Draft")
+  showProfilePhoto   Boolean  @default(true)
+  showAvatarBadge    Boolean  @default(true)
+  showBio            Boolean  @default(true)
+  showSocialChips    Boolean  @default(true)
+  aboutWhatIDo       String?
+  aboutInterests     Json?
+  aboutEducation     String?
+  aboutLocation      String?
+  links              Json?
+  selectedProductIds Json?
+  productVisibility  Json?
+  selectedSocialIds  Json?
+  socialVisibility   Json?
+  settings           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@unique([workspaceId, cardSlug])
+  @@map("cards")
 }
 
 model Product {
@@ -68,4 +107,22 @@ model ProductCategory {
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
   @@map("product_categories")
+}
+
+model SocialLink {
+  id               String   @id @default(cuid())
+  userId           String
+  workspaceId      Int
+  platform         String
+  accountName      String?
+  customPlatform   String?
+  url              String
+  useInCardBuilder Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("social_links")
 }
