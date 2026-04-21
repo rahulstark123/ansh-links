@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import currencyCodes from "currency-codes";
 import type { IconType } from "react-icons";
@@ -110,6 +110,23 @@ type StoredCard = {
   cardSlug: string;
   isLive: boolean;
   status: string;
+  bio: string | null;
+  profileImageUrl: string | null;
+  designId: string;
+  defaultThemeId: string;
+  showProfilePhoto: boolean;
+  showAvatarBadge: boolean;
+  showBio: boolean;
+  showSocialChips: boolean;
+  aboutWhatIDo: string | null;
+  aboutInterests: unknown;
+  aboutEducation: string | null;
+  aboutLocation: string | null;
+  selectedProductIds: unknown;
+  productVisibility: unknown;
+  selectedSocialIds: unknown;
+  socialVisibility: unknown;
+  settings: unknown;
   coverImageUrl: string | null;
   updatedAt: string;
   links: Array<{ label?: string; url?: string; enabled?: boolean }> | null;
@@ -443,6 +460,7 @@ const fileToOptimizedDataUrl = async (file: File): Promise<string> => {
 };
 
 export default function HomeDashboard() {
+  const [isUnsupportedScreen, setIsUnsupportedScreen] = useState(false);
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isBuilderMode, setIsBuilderMode] = useState(false);
@@ -601,6 +619,10 @@ export default function HomeDashboard() {
     () => createdCards.find((card) => card.id === selectedCardId) ?? null,
     [createdCards, selectedCardId],
   );
+  const selectedStoredCard = useMemo(
+    () => (cardsQueryData?.cards ?? []).find((card) => card.id === selectedCardId) ?? null,
+    [cardsQueryData?.cards, selectedCardId],
+  );
   const { data: coverPresetsQueryData } = useQuery({
     queryKey: ["cover-presets"],
     queryFn: async () => {
@@ -642,6 +664,80 @@ export default function HomeDashboard() {
       : activeTab === "My Links" && selectedCard
         ? "my-links"
         : null;
+
+  useEffect(() => {
+    const updateScreenState = () => {
+      setIsUnsupportedScreen(window.innerWidth < 1250);
+    };
+    updateScreenState();
+    window.addEventListener("resize", updateScreenState);
+    return () => window.removeEventListener("resize", updateScreenState);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedStoredCard || activeTab !== "My Links") return;
+
+    const links = Array.isArray(selectedStoredCard.links)
+      ? selectedStoredCard.links.map((item, index) => ({
+          id: `saved-link-${index + 1}`,
+          label: item.label || "",
+          url: item.url || "",
+          enabled: item.enabled !== false,
+        }))
+      : [];
+    const aboutInterests = Array.isArray(selectedStoredCard.aboutInterests)
+      ? selectedStoredCard.aboutInterests.filter((item): item is string => typeof item === "string")
+      : [];
+    const selectedProductIds = Array.isArray(selectedStoredCard.selectedProductIds)
+      ? selectedStoredCard.selectedProductIds.filter((item): item is string => typeof item === "string")
+      : [];
+    const selectedSocialIds = Array.isArray(selectedStoredCard.selectedSocialIds)
+      ? selectedStoredCard.selectedSocialIds.filter((item): item is string => typeof item === "string")
+      : [];
+    const productVisibility =
+      selectedStoredCard.productVisibility && typeof selectedStoredCard.productVisibility === "object"
+        ? (selectedStoredCard.productVisibility as Record<string, boolean>)
+        : {};
+    const socialVisibility =
+      selectedStoredCard.socialVisibility && typeof selectedStoredCard.socialVisibility === "object"
+        ? (selectedStoredCard.socialVisibility as Record<string, boolean>)
+        : {};
+    const settings =
+      selectedStoredCard.settings && typeof selectedStoredCard.settings === "object"
+        ? (selectedStoredCard.settings as Partial<typeof cardSettings>)
+        : {};
+
+    setDraftTitle(selectedStoredCard.title || "New Creator Card");
+    setDraftBio(selectedStoredCard.bio || "");
+    setProfileImageUrl(selectedStoredCard.profileImageUrl || "/creator-elena.png");
+    setCoverImageUrl(selectedStoredCard.coverImageUrl || "/image1.svg");
+    setDraftDesignId(selectedStoredCard.designId || "default");
+    setDefaultThemeId(selectedStoredCard.defaultThemeId || "aurora");
+    setShowProfilePhoto(selectedStoredCard.showProfilePhoto ?? true);
+    setShowAvatarBadge(selectedStoredCard.showAvatarBadge ?? true);
+    setShowBio(selectedStoredCard.showBio ?? true);
+    setShowSocialChips(selectedStoredCard.showSocialChips ?? true);
+    setAboutWhatIDo(selectedStoredCard.aboutWhatIDo || "");
+    setAboutInterestsInput(aboutInterests.join(", "));
+    setAboutEducation(selectedStoredCard.aboutEducation || "");
+    setAboutLocation(selectedStoredCard.aboutLocation || "");
+    setDraftLinkRows(
+      links.length
+        ? links
+        : [{ id: "saved-link-1", label: "Portfolio", url: "", enabled: true }],
+    );
+    setBuilderSelectedProductIds(selectedProductIds);
+    setBuilderProductVisibility(productVisibility);
+    setBuilderSelectedSocialIds(selectedSocialIds);
+    setBuilderSocialVisibility(socialVisibility);
+    setCardSettings({
+      allowPublic: settings.allowPublic ?? true,
+      allowShare: settings.allowShare ?? true,
+      allowSearchIndexing: settings.allowSearchIndexing ?? true,
+      matureContentWarning: settings.matureContentWarning ?? false,
+      removeAnshBanner: settings.removeAnshBanner ?? false,
+    });
+  }, [activeTab, selectedStoredCard]);
 
   const handleExitBuilder = () => {
     setShowExitBuilderModal(true);
@@ -728,6 +824,22 @@ export default function HomeDashboard() {
         throw new Error(payloadJson.message ?? "Could not create card.");
       }
       return payloadJson;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+  const updateCardLiveMutation = useMutation({
+    mutationFn: async (payload: { id: string; isLive: boolean }) => {
+      const response = await fetch("/api/cards", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const payloadJson = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        throw new Error(payloadJson.message ?? "Could not update card live status.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cards"] });
@@ -1381,6 +1493,21 @@ export default function HomeDashboard() {
     localStorage.setItem("ansh-live-preview", JSON.stringify(payload));
     window.open("/home/preview", "_blank");
   };
+
+  if (isUnsupportedScreen) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#060810] px-6 text-white">
+        <div className="max-w-3xl text-center">
+          <h1 className="text-3xl font-semibold">
+            Sorry We are currently not available for this screen size please check on other devices
+          </h1>
+          <p className="mt-4 text-lg text-white/70">
+            For mobile mobile screen our app is in development phase
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className={`relative bg-[#060810] text-white ${isBuilderMode ? "h-screen overflow-hidden" : "min-h-screen overflow-hidden"}`}>
@@ -2171,10 +2298,17 @@ export default function HomeDashboard() {
                 {createdCards.map((card) => {
                   const isActive = selectedCard?.id === card.id;
                   return (
-                    <button
+                    <div
                       key={card.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedCardId(card.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedCardId(card.id);
+                        }
+                      }}
                       className={`group relative aspect-[3/4] overflow-hidden rounded-[1.2rem] border text-left transition ${
                         isActive
                           ? "border-cyan-300/45 bg-[#12253a]/70 shadow-[0_0_0_1px_rgba(22,220,255,0.3)_inset]"
@@ -2194,13 +2328,35 @@ export default function HomeDashboard() {
                       <div className="absolute inset-x-0 bottom-0 p-4">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-[1.03rem] font-semibold">{card.name}</p>
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-[0.09em] ${
-                              card.status === "Live" ? "bg-cyan-400/20 text-cyan-200" : "bg-white/10 text-white/65"
-                            }`}
+                          <div
+                            className="inline-flex rounded-full border border-white/20 bg-black/35 p-0.5"
+                            onClick={(event) => event.stopPropagation()}
                           >
-                            {card.status}
-                          </span>
+                            <button
+                              type="button"
+                              onClick={() => updateCardLiveMutation.mutate({ id: card.id, isLive: true })}
+                              disabled={updateCardLiveMutation.isPending}
+                              className={`rounded-full px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.09em] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                card.status === "Live"
+                                  ? "bg-cyan-400/25 text-cyan-100"
+                                  : "text-white/55 hover:text-white/80"
+                              }`}
+                            >
+                              Live
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateCardLiveMutation.mutate({ id: card.id, isLive: false })}
+                              disabled={updateCardLiveMutation.isPending}
+                              className={`rounded-full px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.09em] transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                card.status === "Draft"
+                                  ? "bg-white/20 text-white"
+                                  : "text-white/55 hover:text-white/80"
+                              }`}
+                            >
+                              Draft
+                            </button>
+                          </div>
                         </div>
                         <p className="mt-1 truncate text-sm text-white/70">{card.handle}</p>
                         <p className="mt-2 text-xs text-white/55">{card.updatedAt}</p>
@@ -2226,7 +2382,7 @@ export default function HomeDashboard() {
                           </button>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2478,34 +2634,28 @@ export default function HomeDashboard() {
                   onClick={() =>
                     openPreviewPage({
                       mode: "my-links",
-                      designId: "default",
-                      defaultThemeId: "aurora",
-                      title: selectedCard.name,
-                      handle: selectedCard.handle,
-                      bio: "This is your live published card preview.",
-                      coverImageUrl: selectedCard.cover,
-                      profileImageUrl: selectedCard.cover,
-                      avatarImageUrl: "/digital-avatar.svg",
-                      showProfilePhoto: true,
-                      showAvatarBadge: false,
-                      showBio: true,
-                      showSocialChips: false,
-                      aboutWhatIDo: "",
-                      aboutInterests: [],
-                      aboutEducation: "",
-                      aboutLocation: "",
-                      suggestions: [],
-                      settings: {
-                        allowPublic: true,
-                        allowShare: true,
-                        allowSearchIndexing: true,
-                        matureContentWarning: false,
-                        removeAnshBanner: false,
-                      },
-                      links: selectedCard.links.map((label) => ({ label, url: "" })),
-                      socials: [],
+                      designId: draftDesignId,
+                      defaultThemeId,
+                      title: draftTitle || "New Creator Card",
+                      handle: draftHandle,
+                      bio: draftBio,
+                      coverImageUrl,
+                      profileImageUrl,
+                      avatarImageUrl,
+                      showProfilePhoto,
+                      showAvatarBadge,
+                      showBio,
+                      showSocialChips,
+                      aboutWhatIDo,
+                      aboutInterests,
+                      aboutEducation,
+                      aboutLocation,
+                      suggestions,
+                      settings: cardSettings,
+                      links: draftLinkRows.filter((item) => item.enabled).map((item) => ({ label: item.label, url: item.url })),
+                      socials: enabledSocials.map((row) => ({ platform: row.platform, customPlatform: row.customPlatform })),
                       products: enabledProductsForPreview,
-                      design: designPresets[0],
+                      design: resolvedDesign,
                     })
                   }
                   className="rounded-md border border-white/12 bg-[#151923]/80 px-3 py-1.5 text-xs font-semibold text-white/80 transition hover:text-white"
@@ -2533,49 +2683,19 @@ export default function HomeDashboard() {
               <div className="pointer-events-none absolute inset-x-8 -bottom-8 h-20 rounded-full bg-cyan-400/20 blur-2xl" />
               <div className="relative mt-12 overflow-hidden rounded-[1.6rem] border border-cyan-300/25 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
                 {!cardSettings.removeAnshBanner ? (
-                  <div className="absolute -left-8 top-5 z-20 -rotate-45 rounded-sm bg-gradient-to-r from-[#b983ff] to-[#22deff] px-10 py-1 text-[0.52rem] font-bold uppercase tracking-[0.16em] text-[#08101c]">
+                  <div
+                    className={`absolute -left-8 top-5 z-20 -rotate-45 rounded-sm px-10 py-1 text-[0.52rem] font-bold uppercase tracking-[0.16em] ${resolvedDesign.ribbonClass} ${resolvedDesign.ribbonTextClass}`}
+                  >
                     ANSH
                   </div>
                 ) : null}
-                <div
-                  className="absolute inset-0 bg-cover bg-center"
-                  style={{
-                    backgroundImage: `linear-gradient(135deg,rgba(39,217,255,0.32),rgba(162,109,255,0.3),rgba(255,91,207,0.35)), url('${selectedCard.cover}')`,
-                  }}
-                />
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,8,18,0.05)_0%,rgba(5,8,18,0.2)_42%,rgba(5,8,18,0.85)_66%,rgba(5,8,18,0.95)_100%)]" />
-                <div className="relative h-36 border-b border-white/10" />
-
-                <div className="relative bg-black/38 p-5 backdrop-blur-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="truncate text-[1.5rem] font-semibold leading-none">{selectedCard.name}</h2>
-                    <span className="rounded-full bg-cyan-400/20 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-[0.1em] text-cyan-200">
-                      {selectedCard.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-cyan-300/90">@{selectedCard.id}.design</p>
-                  <p className="mt-2 text-xs text-white/55">{selectedCard.handle}</p>
-
-                  <p className="mt-4 text-[0.58rem] font-bold uppercase tracking-[0.17em] text-white/55">Quick Links</p>
-                  <div className="mt-2 space-y-2.5">
-                    {selectedCard.links.map((item) => (
-                      <div
-                        key={`preview-${selectedCard.id}-${item}`}
-                        className="flex items-center justify-between rounded-full border border-cyan-300/30 bg-[#131826]/85 px-3 py-2.5 text-sm text-white/86"
-                      >
-                        {item}
-                        <span className="text-white/40">›</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {enabledProductsForPreview.length ? (
-                    <div className="mt-4">
-                      <p className="text-[0.58rem] font-bold uppercase tracking-[0.17em] text-white/55">Products</p>
-                      <ProductCarousel products={enabledProductsForPreview} idPrefix="card" />
-                    </div>
-                  ) : null}
+                <div className={`absolute inset-0 ${resolvedDesign.shellClass}`} />
+                <div className={`absolute inset-0 ${resolvedDesign.overlayClass}`} />
+                <div className="relative h-36 overflow-hidden border-b border-white/10">
+                  <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${coverImageUrl}')` }} />
+                  <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(12,14,22,0.22),rgba(12,14,22,0.05)_45%,rgba(12,14,22,0.34))]" />
                 </div>
+                {renderBuilderLayout()}
               </div>
             </div>
           </aside>

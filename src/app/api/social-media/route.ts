@@ -31,11 +31,14 @@ export async function GET() {
     if ("error" in auth) return auth.error;
 
     const socialLinks = await prisma.socialLink.findMany({
-      where: { workspaceId: auth.appUser.workspaceId },
+      where: {
+        workspaceId: auth.appUser.workspaceId,
+        userId: auth.appUser.id,
+      },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, socialLinks });
+    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, wid: auth.appUser.workspaceId, socialLinks });
   } catch (error) {
     console.error("GET /api/social-media failed", error);
     return NextResponse.json({ message: "Failed to fetch social links.", code: "SOCIAL_GET_FAILED" }, { status: 500 });
@@ -85,7 +88,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, socialLink }, { status: 201 });
+    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, wid: auth.appUser.workspaceId, socialLink }, { status: 201 });
   } catch (error) {
     console.error("POST /api/social-media failed", error);
     return NextResponse.json({ message: "Failed to create social link.", code: "SOCIAL_POST_FAILED" }, { status: 500 });
@@ -117,6 +120,7 @@ export async function PATCH(request: Request) {
       where: {
         id,
         workspaceId: auth.appUser.workspaceId,
+        userId: auth.appUser.id,
       },
       select: { id: true },
     });
@@ -154,7 +158,7 @@ export async function PATCH(request: Request) {
       data,
     });
 
-    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, socialLink });
+    return NextResponse.json({ workspaceId: auth.appUser.workspaceId, wid: auth.appUser.workspaceId, socialLink });
   } catch (error) {
     console.error("PATCH /api/social-media failed", error);
     return NextResponse.json({ message: "Failed to update social link.", code: "SOCIAL_PATCH_FAILED" }, { status: 500 });

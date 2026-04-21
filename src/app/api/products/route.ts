@@ -28,7 +28,10 @@ export async function GET() {
     }
 
     const products = await prisma.product.findMany({
-      where: { workspaceId: appUser.workspaceId },
+      where: {
+        workspaceId: appUser.workspaceId,
+        userId: appUser.id,
+      },
       include: {
         category: {
           select: { id: true, name: true },
@@ -113,6 +116,7 @@ export async function POST(request: Request) {
       where: {
         id: categoryId,
         workspaceId: appUser.workspaceId,
+        userId: appUser.id,
       },
       select: { id: true },
     });

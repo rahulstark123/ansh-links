@@ -17,15 +17,18 @@ export async function GET() {
 
     const appUser = await prisma.user.findUnique({
       where: { email: user.email },
-      select: { workspaceId: true },
+      select: { id: true, workspaceId: true },
     });
 
     if (!appUser) {
-      return NextResponse.json({ workspaceId: null, categories: [] });
+      return NextResponse.json({ workspaceId: null, wid: null, categories: [] });
     }
 
     const categories = await prisma.productCategory.findMany({
-      where: { workspaceId: appUser.workspaceId },
+      where: {
+        workspaceId: appUser.workspaceId,
+        userId: appUser.id,
+      },
       orderBy: [{ name: "asc" }],
       select: {
         id: true,
@@ -33,7 +36,7 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ workspaceId: appUser.workspaceId, categories });
+    return NextResponse.json({ workspaceId: appUser.workspaceId, wid: appUser.workspaceId, categories });
   } catch (error) {
     console.error("GET /api/product-categories failed", error);
     return NextResponse.json({ message: "Failed to fetch categories.", code: "CATEGORIES_GET_FAILED" }, { status: 500 });
@@ -80,7 +83,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ workspaceId: appUser.workspaceId, category }, { status: 201 });
+    return NextResponse.json({ workspaceId: appUser.workspaceId, wid: appUser.workspaceId, category }, { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ message: "Category already exists.", code: "CATEGORY_DUPLICATE" }, { status: 409 });

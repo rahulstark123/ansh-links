@@ -342,7 +342,7 @@ export default function PreviewPage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-auto bg-[#060810] text-white">
+    <main className="scrollbar-ansh relative h-screen overflow-y-auto overflow-x-hidden bg-[#060810] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(62%_44%_at_52%_54%,rgba(0,228,255,0.22),transparent_72%),radial-gradient(58%_52%_at_95%_84%,rgba(154,90,255,0.2),transparent_75%)]" />
       <section className="relative z-10 mx-auto w-full max-w-[1180px] px-6 pb-16 pt-8">
         <div className="mb-8 flex items-center justify-between">
@@ -364,7 +364,7 @@ export default function PreviewPage() {
               Preview data is not available yet. Open preview from the builder screen.
             </div>
           ) : (
-            <div className="scrollbar-ansh relative max-h-[calc(100vh-10.5rem)] overflow-y-auto overflow-x-hidden rounded-[1.6rem] border border-cyan-300/25 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+            <div className="relative overflow-hidden rounded-[1.6rem] border border-cyan-300/25 shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
               {!data.settings?.removeAnshBanner ? (
                 <div
                   className={`absolute -left-8 top-5 z-20 -rotate-45 rounded-sm px-10 py-1 text-[0.52rem] font-bold uppercase tracking-[0.16em] ${data.design.ribbonClass} ${data.design.ribbonTextClass}`}

@@ -88,7 +88,10 @@ export async function GET() {
     if ("error" in auth) return auth.error;
 
     const cards = await prisma.card.findMany({
-      where: { workspaceId: auth.appUser.workspaceId },
+      where: {
+        workspaceId: auth.appUser.workspaceId,
+        userId: auth.appUser.id,
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -163,5 +166,52 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("POST /api/cards failed", error);
     return NextResponse.json({ message: "Failed to create card.", code: "CARDS_POST_FAILED" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const auth = await getAuthenticatedWorkspace();
+    if ("error" in auth) return auth.error;
+
+    const payload = (await request.json().catch(() => null)) as { id?: string; isLive?: boolean } | null;
+    const id = payload?.id?.trim() ?? "";
+
+    if (!id) {
+      return NextResponse.json({ message: "Card id is required.", code: "CARD_ID_REQUIRED" }, { status: 400 });
+    }
+    if (typeof payload?.isLive !== "boolean") {
+      return NextResponse.json({ message: "isLive must be boolean.", code: "INVALID_LIVE_VALUE" }, { status: 400 });
+    }
+
+    const existing = await prisma.card.findFirst({
+      where: {
+        id,
+        workspaceId: auth.appUser.workspaceId,
+        userId: auth.appUser.id,
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ message: "Card not found.", code: "CARD_NOT_FOUND" }, { status: 404 });
+    }
+
+    const card = await prisma.card.update({
+      where: { id },
+      data: {
+        isLive: payload.isLive,
+        status: payload.isLive ? "Live" : "Draft",
+      },
+    });
+
+    return NextResponse.json({
+      workspaceId: auth.appUser.workspaceId,
+      wid: auth.appUser.workspaceId,
+      card,
+    });
+  } catch (error) {
+    console.error("PATCH /api/cards failed", error);
+    return NextResponse.json({ message: "Failed to update card.", code: "CARDS_PATCH_FAILED" }, { status: 500 });
   }
 }
